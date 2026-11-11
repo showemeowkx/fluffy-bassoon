@@ -597,7 +597,7 @@ function createReconstructedTemplates() {
   };
 }
 
-function resolveTemplate(source, fallbackType, formTemplateBySourceId, reconstructed) {
+function resolveTemplate(source, fallbackType, formTemplateBySourceId, reconstructed, rawAnswers = []) {
   const formSourceId = source?.formId || source?.form?.id || source?.formTemplateId;
   if (formSourceId && formTemplateBySourceId.has(formSourceId)) {
     return formTemplateBySourceId.get(formSourceId);
@@ -607,6 +607,22 @@ function resolveTemplate(source, fallbackType, formTemplateBySourceId, reconstru
     const byTitle = [...formTemplateBySourceId.values()].find((template) => normalizeNameKey(template.name) === title);
     if (byTitle) {
       return byTitle;
+    }
+  }
+  const answerKeys = rawAnswers.map((answer) => answer.key).filter(Boolean);
+  if (answerKeys.length) {
+    let best;
+    let bestScore = 0;
+    for (const template of formTemplateBySourceId.values()) {
+      const score = answerKeys.filter((key) => template.__fieldsByKey.has(key)).length;
+      const preferType = template.form_type === fallbackType ? 0.5 : 0;
+      if (score > 0 && score + preferType > bestScore) {
+        best = template;
+        bestScore = score + preferType;
+      }
+    }
+    if (best) {
+      return best;
     }
   }
   return reconstructed.get(fallbackType);
@@ -640,7 +656,7 @@ function buildAnswers(rawAnswers, template) {
 // Finds the most likely list of question/answer pairs anywhere inside `data`.
 function findAnswerList(data) {
   const questionKeys = ["label", "question", "questionLabel", "questionText", "prompt", "fieldLabel", "title"];
-  const answerKeys = ["value", "answer", "response", "displayValue", "answerText", "formattedValue", "values", "text"];
+  const answerKeys = ["value", "answer", "response", "selected", "displayValue", "answerText", "formattedValue", "values", "text"];
   let best = [];
   const seen = new Set();
   const walk = (node, depth) => {
@@ -711,7 +727,7 @@ async function extractIntakeSubmissions(kx, clientSourceId, clientId, formTempla
       runLog.skipped.push({ area: "intake_submission", client_id: clientId, reason: "no question/answer pairs found" });
       continue;
     }
-    const template = resolveTemplate(submission, "intake", formTemplateBySourceId, reconstructed);
+    const template = resolveTemplate(submission, "intake", formTemplateBySourceId, reconstructed, rawAnswers);
     submissions.push({
       id: sourceId("submission", submission.id || `${clientSourceId}_intake_${submissions.length + 1}`),
       client_id: clientId,
@@ -766,13 +782,16 @@ async function extractClientCheckIns(kx, row, clientId, formTemplateBySourceId, 
       ...(await kx.find(["clients", "detail", row.id])).filter((entry) => JSON.stringify(entry.key).includes(checkInSourceId)).map((entry) => entry.data)
     ];
     rawCheckIns.details.push({ check_in_source_id: checkInSourceId, queries: visit.added });
-    let rawAnswers = findAnswerList(related);
+    let rawAnswers = checkInComparisonAnswers(related);
+    if (!rawAnswers.length) {
+      rawAnswers = findAnswerList(related);
+    }
     if (!rawAnswers.length) {
       rawAnswers = findAnswerList(checkInRow);
     }
     let submission;
     if (rawAnswers.length) {
-      const template = resolveTemplate(checkInRow, "check_in", formTemplateBySourceId, reconstructed);
+      const template = resolveTemplate(checkInRow, "check_in", formTemplateBySourceId, reconstructed, rawAnswers);
       submission = {
         id: sourceId("submission", checkInSourceId),
         client_id: clientId,
@@ -787,6 +806,28 @@ async function extractClientCheckIns(kx, row, clientId, formTemplateBySourceId, 
     results.push({ checkIn, submission });
   }
   return results;
+}
+
+// Reads answers from the check-in detail's comparison rows. Photo questions carry their
+// files in selectedMedia; the answer records file names only (photos are not downloaded).
+function checkInComparisonAnswers(related) {
+  for (const data of related) {
+    const rows = data?.comparison?.rows;
+    if (!Array.isArray(rows) || !rows.length) {
+      continue;
+    }
+    return rows
+      .map((row) => {
+        let value = normalizeAnswer(row.selected);
+        const media = Array.isArray(row.selectedMedia) ? row.selectedMedia : [];
+        if ((value === null || value === undefined || value === "") && media.length) {
+          value = media.map((item) => item.filename || item.assetId || item.kind || "photo").join(", ");
+        }
+        return { key: row.key, label: row.label || row.key, value };
+      })
+      .filter((answer) => answer.label && answer.value !== null && answer.value !== undefined && answer.value !== "");
+  }
+  return [];
 }
 
 function checkInDate(row) {
@@ -884,7 +925,9 @@ function mapPrescription(raw) {
   const rpe = num(raw.rpe ?? first.rpe);
   const restSeconds = num(raw.restSeconds ?? raw.restSec ?? first.restSeconds);
   const durationSeconds = num(raw.durationSeconds ?? raw.timeSeconds ?? first.durationSeconds);
-  const load = num(raw.weight ?? raw.load ?? first.weight ?? first.load);
+  const loadSource = raw.load ?? first.load ?? raw.weight ?? first.weight;
+  const load = loadSource && typeof loadSource === "object" ? num(loadSource.amount ?? loadSource.value) : num(loadSource);
+  const loadUnit = loadSource && typeof loadSource === "object" ? loadSource.unit : undefined;
   return compactObject({
     sets: setList ? setList.length : num(raw.sets ?? raw.setCount),
     reps: reps !== undefined && reps !== null && reps !== "" ? String(reps) : undefined,
@@ -893,7 +936,7 @@ function mapPrescription(raw) {
     tempo: typeof raw.tempo === "string" && raw.tempo ? raw.tempo : undefined,
     rest: restSeconds !== undefined ? { value: restSeconds, unit: "seconds" } : typeof raw.rest === "number" ? { value: raw.rest, unit: "seconds" } : parseDuration(raw.rest),
     duration: durationSeconds !== undefined ? { value: durationSeconds, unit: "seconds" } : undefined,
-    load: load !== undefined ? { value: load, unit: String(raw.weightUnit || raw.loadUnit || first.weightUnit || "kg") } : undefined
+    load: load !== undefined ? { value: load, unit: String(loadUnit || raw.weightUnit || raw.loadUnit || first.weightUnit || "kg") } : undefined
   });
 }
 
@@ -1008,7 +1051,7 @@ async function extractClientHistoryRaw(kx, row, clientId, detail, runLog) {
   const galleryCached = await kx.find(galleryPattern);
   if (galleryCached.length) {
     for (let page = 1; page <= 500; page += 1) {
-      const result = await kx.fetchWith(galleryPattern, { page, pageSize: LIST_PAGE_SIZE });
+      const result = await kx.fetchWith(galleryPattern, { page });
       if (!result.applied || result.error) {
         if (page === 1) {
           galleryPages.push(...galleryCached.map((entry) => entry.data));

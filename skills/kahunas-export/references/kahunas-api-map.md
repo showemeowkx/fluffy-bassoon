@@ -67,14 +67,16 @@ Coach notes arrive with the client summary: `["clients","detail",id,"deleted-inc
 
 Client groups: this Kahunas version has no separate client-group feature (no routes, query keys or fields for it). Grouping exists only as communities (`/coach/people/community`), challenges (`/coach/people/challenges`) and group chat, which are out of scope.
 
-## Not verified yet
+## Verified shapes (from a live account, November 2026)
 
-The pilot account had no submitted check-ins or initial Q&A answers. As a result:
+- Check-in history row: `{ id, checkInNumber, displayNumber, occurredAt, submittedAt, recordedAt, clientTimeZone, status, formId, formTitle, photoCount, metrics, note }`.
+- Check-in answers: the detail page loads `["clients","detail",id,"check-in-comparison",checkInId,"default"]` whose `comparison.rows[]` are `{ key, label, type, isMetric, selected, selectedMedia[{assetId,filename,kind,url}], comparison }`. `selected` is the answer; photo questions carry files in `selectedMedia`.
+- Initial Q&A submission: `{ id, submittedAt, images, fields[{ key, label, type, value }] }`. It has no form id; the exporter matches the form template by question keys.
+- Logged workout list (`workout-logs/latest`): `logs[{ id, kind, title, programTitle, occurredAt, durationSeconds, indicators }]`, plus `personalBests` and `rhythm`. Log detail `["clients","detail",id,"workout-logs","<kind>:<logId>"]`: `detail.blocks[].items[]{ exerciseKey, exerciseName, prescription, notes, sets[{ position, reps, load:{amount,unit}, rir, rpe, tempo, logged }] }` and `exerciseHistories`.
+- Habits week: `{ weekStart, form{id,title}, days[7], habits[{ key, label, field{key,label,type,options}, cells[7]{kind,value}, summary }] }`.
+- Gallery page: `groups[{ id, kind, checkInId, checkInNumber, recordedAt, weight, images[{ id, assetId, url, filename, mimeType, size }] }]`. Its payload has `page` but no `pageSize`, so only `page` is rewritten. Image URLs point to S3 and need a fresh signed URL to download; the raw export strips query strings.
 
-- check-in row field names (`id`, `submittedAt`/`occurredAt`, `formId`/`formTitle`) are handled defensively, and
-- answers are found by searching the detail data for lists of `{label|question|prompt, value|answer|response}`.
-
-Prescription fields (`sets`, `reps`, `rpe`, `rir`, `restSeconds`, `tempo`, set arrays) are handled the same defensive way. Before trusting those counts on an account that has this data, check them against what the coach sees in Kahunas.
+Still unverified: a plan exercise's `prescription` with real values (the test plan had empty prescriptions). Logged sets show the likely field names (`reps`, `load{amount,unit}`, `rir`, `rpe`, `tempo`), and `mapPrescription` handles those.
 
 ## Live extractor rules
 
