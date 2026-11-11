@@ -62,7 +62,9 @@ Next to the V1 package the exporter writes one JSON file per area with the app's
 
 Payload overrides are generic: `fetchWith(pattern, { field: value })` rewrites every payload object that contains all given fields. The run log records under `skipped` when an override could not be applied, and what was kept instead.
 
-Coach notes: the client header "Notes" panel did not load anything into the query cache on an account without notes, so notes are not exported yet.
+Coach notes arrive with the client summary: `["clients","detail",id,"deleted-inclusive"].notes[]` with `{ id, body, createdAt, updatedAt, source }`. Opening the "Notes" panel fetches nothing, so they are exported through `raw/clients.json` (`detail.notes`).
+
+Client groups: this Kahunas version has no separate client-group feature (no routes, query keys or fields for it). Grouping exists only as communities (`/coach/people/community`), challenges (`/coach/people/challenges`) and group chat, which are out of scope.
 
 ## Not verified yet
 
