@@ -23,7 +23,7 @@ import { installKahunasBridge } from "./kahunas-app-bridge.mjs";
 const args = parseArgs(process.argv.slice(2));
 
 if (args.help) {
-  console.log(`Usage: node skills/kahunas-export/scripts/export-kahunas.mjs [--run-dir DIR] [--fixture FILE] [--cdp-url URL]\n\nCreates a local Kahunas coaching data export package.\n\nOptions:\n  --run-dir DIR  Run folder. Defaults to ~/KahunasExports/kahunas/runs/<timestamp>.\n  --fixture FILE Use an existing standard package JSON as input for local testing.\n  --cdp-url URL  Connect to a local browser launched by start-browser.mjs.\n  --history-weeks N  Weeks of habit and food logs to export per client. Defaults to 104.\n  --help         Show this help text.\n`);
+  console.log(`Usage: node skills/kahunas-export/scripts/export-kahunas.mjs [--run-dir DIR] [--fixture FILE] [--cdp-url URL]\n\nCreates a local Kahunas coaching data export package.\n\nOptions:\n  --run-dir DIR  Run folder. Defaults to ~/KahunasExports/kahunas/runs/<timestamp>.\n  --fixture FILE Use an existing standard package JSON as input for local testing.\n  --cdp-url URL  Connect to a local browser launched by start-browser.mjs.\n  --history-weeks N  Weeks of habit and food logs to export per client. Defaults to 104.\n  --download-photos  Also save progress photos into the export (media/photos/). Photo links expire after 15 minutes, so this is the only way to keep them.\n  --help         Show this help text.\n`);
   process.exit(0);
 }
 
@@ -95,6 +95,10 @@ const CLIENT_ROUTE = "/coach/people/clients/$clientId";
 const LIST_PAGE_SIZE = 100;
 const HISTORY_WEEKS = Math.max(1, Number(args["history-weeks"]) || 104);
 const RAW = createRawStore();
+// Kahunas photo links are S3 URLs signed for 15 minutes, so a stored link is useless
+// later. With --download-photos the files are saved during the export instead.
+const DOWNLOAD_PHOTOS = Boolean(args["download-photos"]);
+let EXPORT_DIR_FOR_MEDIA = null;
 // Kahunas prescriptions carry the load as a bare number; the unit is the coach's weight unit.
 let DEFAULT_LOAD_UNIT = "kg";
 
@@ -214,6 +218,7 @@ async function getKahunasLoginState(page) {
 }
 
 async function extractLivePackage(kx, runLog) {
+  EXPORT_DIR_FOR_MEDIA = exportDir;
   progress("Exporting coach profile.");
   await kx.visit("/coach/settings");
   const routeContext = await kx.findOne(["coach-route-context", "context"]);
@@ -1069,7 +1074,8 @@ async function extractClientHistoryRaw(kx, row, clientId, detail, runLog) {
     }
   }
   runLog.pagination[`progress_photos_${clientId}`] = galleryPages.map((page) => ({ page: page?.page, pageCount: page?.pageCount, totalImages: page?.totalImages, groups: (page?.groups || []).length }));
-  RAW.progress_photos.push({ ...base, pages: galleryPages });
+  const downloaded = DOWNLOAD_PHOTOS ? await downloadPhotos(galleryPages, id, runLog) : undefined;
+  RAW.progress_photos.push({ ...base, pages: galleryPages, downloaded_files: downloaded });
 
   for (const [area, route] of [["labs", `${CLIENT_ROUTE}/labs/`], ["cycle", `${CLIENT_ROUTE}/cycle`]]) {
     const visit = await kx.visit(route, { clientId: id });
@@ -1106,6 +1112,39 @@ async function extractClientHistoryRaw(kx, row, clientId, detail, runLog) {
 
 // Week starts (YYYY-MM-DD) from the app's current week back to the client's start date,
 // capped at maxWeeks.
+// Downloads every image in the gallery pages right away, while the signed URLs are fresh.
+// Returns { assetId: "media/photos/<client>/<file>" } paths relative to the export folder.
+async function downloadPhotos(galleryPages, clientSourceId, runLog) {
+  const files = {};
+  const images = galleryPages.flatMap((page) => (page?.groups || []).flatMap((group) => group.images || []));
+  if (!images.length) {
+    return files;
+  }
+  progress(`Saving ${images.length} progress photo(s) to this laptop.`);
+  const relativeDir = join("media", "photos", sourceId("client", clientSourceId));
+  const targetDir = join(EXPORT_DIR_FOR_MEDIA, relativeDir);
+  ensureDir(targetDir);
+  for (const image of images) {
+    const key = image.assetId || image.id;
+    if (!image.url || !key || files[key]) {
+      continue;
+    }
+    try {
+      const response = await fetch(image.url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const extension = (String(image.filename || "").match(/\.([a-z0-9]{2,5})$/i)?.[1] || String(image.mimeType || "").split("/")[1] || "jpg").toLowerCase();
+      const fileName = `${sourceId("photo", key)}.${extension}`;
+      writeFileSync(join(targetDir, fileName), Buffer.from(await response.arrayBuffer()));
+      files[key] = `${relativeDir.replace(/\\/g, "/")}/${fileName}`;
+    } catch (error) {
+      runLog.skipped.push({ area: "photo_download", client_id: sourceId("client", clientSourceId), asset_id: key, reason: error.message });
+    }
+  }
+  return files;
+}
+
 function weekStartsBack(anchor, startValue, maxWeeks) {
   const anchorDate = /^\d{4}-\d{2}-\d{2}$/.test(String(anchor || "")) ? new Date(`${anchor}T00:00:00Z`) : null;
   if (!anchorDate || Number.isNaN(anchorDate.getTime())) {
@@ -1219,11 +1258,11 @@ const RAW_README = [
   "- `forms.json`, `library-exercises.json`, `recipes.json`: the coach's own forms, exercises and recipes",
   "- `library-programs.json`, `library-meal-plans.json`: every program and meal plan in the coach's library, assigned or not",
   "- `custom-foods.json`, `library-meals.json`, `library-days.json`, `library-supplement-plans.json`: the coach's own foods, saved meals, saved days and supplement plans",
-  "- `progress-photos.json`: progress photo list per client (links only; the photos themselves are not downloaded)",
+  "- `progress-photos.json`: progress photo list per client; with --download-photos, `downloaded_files` maps each photo to its file under media/photos/",
   "- `labs-and-cycle.json`, `content.json`: labs, cycle tracking, docs, content library and courses",
   "- `coach.json`: coach account and general settings",
   "",
-  "Passwords, tokens and other secrets are not included. Photos and videos are not downloaded.",
+  "Passwords, tokens and other secrets are not included. Photo links in these files are expired; photos are only kept when the export ran with --download-photos. Videos are not downloaded.",
   ""
 ].join("\n");
 
