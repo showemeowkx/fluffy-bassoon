@@ -95,6 +95,8 @@ const CLIENT_ROUTE = "/coach/people/clients/$clientId";
 const LIST_PAGE_SIZE = 100;
 const HISTORY_WEEKS = Math.max(1, Number(args["history-weeks"]) || 104);
 const RAW = createRawStore();
+// Kahunas prescriptions carry the load as a bare number; the unit is the coach's weight unit.
+let DEFAULT_LOAD_UNIT = "kg";
 
 async function packageFromLiveBrowser() {
   if (!args["cdp-url"]) {
@@ -219,6 +221,7 @@ async function extractLivePackage(kx, runLog) {
   const profile = mapCoachProfile(routeContext);
   progress("Exporting coach settings.");
   const settings = mapCoachSettings(settingsDetail, routeContext);
+  DEFAULT_LOAD_UNIT = settings.units?.weight || DEFAULT_LOAD_UNIT;
   RAW.coach = {
     user: routeContext?.user,
     display_time_zone: routeContext?.displayTimeZone,
@@ -936,7 +939,7 @@ function mapPrescription(raw) {
     tempo: typeof raw.tempo === "string" && raw.tempo ? raw.tempo : undefined,
     rest: restSeconds !== undefined ? { value: restSeconds, unit: "seconds" } : typeof raw.rest === "number" ? { value: raw.rest, unit: "seconds" } : parseDuration(raw.rest),
     duration: durationSeconds !== undefined ? { value: durationSeconds, unit: "seconds" } : undefined,
-    load: load !== undefined ? { value: load, unit: String(loadUnit || raw.weightUnit || raw.loadUnit || first.weightUnit || "kg") } : undefined
+    load: load !== undefined ? { value: load, unit: String(loadUnit || raw.weightUnit || raw.loadUnit || first.weightUnit || DEFAULT_LOAD_UNIT) } : undefined
   });
 }
 

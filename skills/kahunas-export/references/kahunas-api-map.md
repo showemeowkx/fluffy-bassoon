@@ -76,7 +76,7 @@ Client groups: this Kahunas version has no separate client-group feature (no rou
 - Habits week: `{ weekStart, form{id,title}, days[7], habits[{ key, label, field{key,label,type,options}, cells[7]{kind,value}, summary }] }`.
 - Gallery page: `groups[{ id, kind, checkInId, checkInNumber, recordedAt, weight, images[{ id, assetId, url, filename, mimeType, size }] }]`. Its payload has `page` but no `pageSize`, so only `page` is rewritten. Image URLs point to S3 and need a fresh signed URL to download; the raw export strips query strings.
 
-Still unverified: a plan exercise's `prescription` with real values (the test plan had empty prescriptions). Logged sets show the likely field names (`reps`, `load{amount,unit}`, `rir`, `rpe`, `tempo`), and `mapPrescription` handles those.
+- Plan exercise prescription: `{ sets, reps, load, durationSeconds }`, for example `{"sets":4,"reps":10,"load":"40"}` or `{"durationSeconds":120}`. `load` is a bare string or number with no unit; the exporter uses the coach's weight unit from settings. Block type example: `straight_sets`.
 
 ## Live extractor rules
 
