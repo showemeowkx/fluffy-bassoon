@@ -1,0 +1,1086 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-coaching-data.org/schemas/v1/open-coaching-data.v1.schema.json",
+  "title": "Fitness Coaching Data Standard v1",
+  "description": "Draft logical package schema for portable fitness coaching business data. This single-file schema is intended for review; the public repository can later split these definitions into per-domain schemas.",
+  "type": "object",
+  "required": [
+    "manifest"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "manifest": {
+      "$ref": "#/$defs/manifest"
+    },
+    "coach": {
+      "$ref": "#/$defs/coach_section"
+    },
+    "clients": {
+      "$ref": "#/$defs/clients_section"
+    },
+    "forms": {
+      "$ref": "#/$defs/forms_section"
+    },
+    "check_ins": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/check_in"
+      }
+    },
+    "nutrition": {
+      "$ref": "#/$defs/nutrition_section"
+    },
+    "training": {
+      "$ref": "#/$defs/training_section"
+    }
+  },
+  "$defs": {
+    "manifest": {
+      "type": "object",
+      "required": [
+        "schema_name",
+        "schema_version",
+        "package_id",
+        "created_at",
+        "created_by_tool",
+        "source_platform",
+        "included_domains",
+        "record_counts",
+        "warnings"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema_name": {
+          "const": "open-coaching-data"
+        },
+        "schema_version": {
+          "type": "string",
+          "pattern": "^1\\.[0-9]+\\.[0-9]+$",
+          "examples": [
+            "1.0.0"
+          ]
+        },
+        "package_id": {
+          "$ref": "#/$defs/id"
+        },
+        "created_at": {
+          "$ref": "#/$defs/date_time"
+        },
+        "created_by_tool": {
+          "$ref": "#/$defs/tool_identity"
+        },
+        "source_platform": {
+          "$ref": "#/$defs/source_platform"
+        },
+        "coach_identity": {
+          "$ref": "#/$defs/coach_identity"
+        },
+        "included_domains": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/domain_name"
+          },
+          "uniqueItems": true
+        },
+        "record_counts": {
+          "$ref": "#/$defs/counts"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/package_warning"
+          }
+        },
+        "validation_status": {
+          "type": "string",
+          "enum": [
+            "not_validated",
+            "valid",
+            "valid_with_warnings",
+            "invalid"
+          ]
+        }
+      }
+    },
+    "coach_section": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/coach_profile"
+        },
+        "settings": {
+          "$ref": "#/$defs/coach_settings"
+        }
+      }
+    },
+    "clients_section": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "clients": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/client"
+          }
+        },
+        "client_assignments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/client_assignment"
+          }
+        }
+      }
+    },
+    "forms_section": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "form_templates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/form_template"
+          }
+        },
+        "form_submissions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/form_submission"
+          }
+        }
+      }
+    },
+    "nutrition_section": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "meal_plans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/meal_plan"
+          }
+        }
+      }
+    },
+    "training_section": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workout_plans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/workout_plan"
+          }
+        },
+        "workout_sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/workout_session"
+          }
+        },
+        "workout_session_exercises": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/workout_session_exercise"
+          }
+        }
+      }
+    },
+    "coach_profile": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "email": {
+          "$ref": "#/$defs/email"
+        },
+        "business_name": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "bio": {
+          "type": "string"
+        },
+        "tagline": {
+          "type": "string"
+        },
+        "specialties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "certifications": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "social_links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/social_link"
+          }
+        }
+      }
+    },
+    "coach_settings": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "units": {
+          "$ref": "#/$defs/unit_preferences"
+        },
+        "brand": {
+          "$ref": "#/$defs/brand_settings"
+        }
+      }
+    },
+    "client": {
+      "type": "object",
+      "required": [
+        "id",
+        "display_name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "email": {
+          "$ref": "#/$defs/email"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "inactive",
+            "archived",
+            "prospect",
+            "unknown"
+          ]
+        },
+        "date_of_birth": {
+          "$ref": "#/$defs/date"
+        },
+        "age": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 130
+        },
+        "gender": {
+          "type": "string"
+        },
+        "height": {
+          "$ref": "#/$defs/measurement_value"
+        },
+        "weight": {
+          "$ref": "#/$defs/measurement_value"
+        },
+        "check_in_day": {
+          "$ref": "#/$defs/day_of_week"
+        },
+        "joined_at": {
+          "$ref": "#/$defs/date_time"
+        },
+        "health_context": {
+          "type": "string"
+        }
+      }
+    },
+    "client_assignment": {
+      "type": "object",
+      "required": [
+        "id",
+        "client_id",
+        "assignment_type",
+        "assigned_record_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "client_id": {
+          "$ref": "#/$defs/id"
+        },
+        "assignment_type": {
+          "type": "string",
+          "enum": [
+            "check_in_form",
+            "form_template",
+            "intake_form",
+            "meal_plan",
+            "other",
+            "workout_plan"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "inactive",
+            "completed",
+            "unknown"
+          ]
+        },
+        "starts_at": {
+          "$ref": "#/$defs/date_time"
+        },
+        "ends_at": {
+          "$ref": "#/$defs/date_time"
+        },
+        "assigned_record_id": {
+          "$ref": "#/$defs/id"
+        },
+        "frequency": {
+          "type": "string",
+          "enum": [
+            "once",
+            "daily",
+            "weekly",
+            "monthly",
+            "custom",
+            "unknown"
+          ]
+        },
+        "day_of_week": {
+          "$ref": "#/$defs/day_of_week"
+        }
+      }
+    },
+    "form_template": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "form_type",
+        "fields"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "form_type": {
+          "type": "string",
+          "enum": [
+            "intake",
+            "check_in",
+            "questionnaire",
+            "other"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/form_field"
+          }
+        },
+        "created_at": {
+          "$ref": "#/$defs/date_time"
+        }
+      }
+    },
+    "form_field": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "field_type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string"
+        },
+        "field_type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "textarea",
+            "number",
+            "date",
+            "time",
+            "boolean",
+            "single_choice",
+            "multiple_choice",
+            "rating",
+            "scale",
+            "measurement",
+            "section",
+            "unknown"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unit": {
+          "type": "string"
+        },
+        "min_value": {
+          "type": "number"
+        },
+        "max_value": {
+          "type": "number"
+        },
+        "source_label": {
+          "type": "string"
+        }
+      }
+    },
+    "form_submission": {
+      "type": "object",
+      "required": [
+        "id",
+        "client_id",
+        "form_template_id",
+        "submitted_at",
+        "answers"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "client_id": {
+          "$ref": "#/$defs/id"
+        },
+        "form_template_id": {
+          "$ref": "#/$defs/id"
+        },
+        "submitted_at": {
+          "$ref": "#/$defs/date_time"
+        },
+        "answers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/form_answer"
+          }
+        }
+      }
+    },
+    "form_answer": {
+      "type": "object",
+      "required": [
+        "field_id",
+        "value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "field_id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string"
+        },
+        "value": true,
+        "unit": {
+          "type": "string"
+        },
+        "original": {
+          "$ref": "#/$defs/original_value"
+        }
+      }
+    },
+    "check_in": {
+      "type": "object",
+      "required": [
+        "id",
+        "client_id",
+        "checked_in_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "client_id": {
+          "$ref": "#/$defs/id"
+        },
+        "form_submission_id": {
+          "$ref": "#/$defs/id"
+        },
+        "check_in_number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "checked_in_at": {
+          "$ref": "#/$defs/date_time"
+        }
+      }
+    },
+    "workout_plan": {
+      "type": "object",
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "workout_session": {
+      "type": "object",
+      "required": [
+        "id",
+        "workout_plan_id",
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "workout_plan_id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "day_index": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warmup": {
+          "type": "string"
+        },
+        "cooldown": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "workout_session_exercise": {
+      "type": "object",
+      "required": [
+        "id",
+        "workout_session_id",
+        "exercise"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "workout_session_id": {
+          "$ref": "#/$defs/id"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "section": {
+          "type": "string",
+          "enum": [
+            "warmup",
+            "main",
+            "cooldown",
+            "circuit",
+            "other"
+          ]
+        },
+        "prescription": {
+          "$ref": "#/$defs/exercise_prescription"
+        },
+        "exercise": {
+          "$ref": "#/$defs/embedded_exercise"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "source_platform": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "coach_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "display_name": {
+          "type": "string"
+        },
+        "email": {
+          "$ref": "#/$defs/email"
+        },
+        "business_name": {
+          "type": "string"
+        }
+      }
+    },
+    "tool_identity": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "url": {
+          "$ref": "#/$defs/uri"
+        }
+      }
+    },
+    "package_warning": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "object_ref": {
+          "$ref": "#/$defs/object_reference"
+        }
+      }
+    },
+    "object_reference": {
+      "type": "object",
+      "required": [
+        "object_type",
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "object_type": {
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "nutrition_targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "calories_kcal": {
+          "type": "number",
+          "minimum": 0
+        },
+        "protein_g": {
+          "type": "number",
+          "minimum": 0
+        },
+        "carbohydrates_g": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fat_g": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fiber_g": {
+          "type": "number",
+          "minimum": 0
+        },
+        "sugar_g": {
+          "type": "number",
+          "minimum": 0
+        },
+        "sodium_mg": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "exercise_prescription": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sets": {
+          "type": "number",
+          "minimum": 0
+        },
+        "reps": {
+          "type": "string"
+        },
+        "duration": {
+          "$ref": "#/$defs/duration"
+        },
+        "distance": {
+          "$ref": "#/$defs/measurement_value"
+        },
+        "load": {
+          "$ref": "#/$defs/measurement_value"
+        },
+        "rir": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rpe": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "rest": {
+          "$ref": "#/$defs/duration"
+        },
+        "tempo": {
+          "type": "string"
+        }
+      }
+    },
+    "measurement_value": {
+      "type": "object",
+      "required": [
+        "value",
+        "unit"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "original": {
+          "$ref": "#/$defs/original_value"
+        }
+      }
+    },
+    "duration": {
+      "type": "object",
+      "required": [
+        "value",
+        "unit"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "seconds",
+            "minutes",
+            "hours"
+          ]
+        },
+        "original": {
+          "$ref": "#/$defs/original_value"
+        }
+      }
+    },
+    "original_value": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "value": true,
+        "unit": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      }
+    },
+    "unit_preferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "weight": {
+          "type": "string",
+          "examples": [
+            "kg",
+            "lb"
+          ]
+        },
+        "height": {
+          "type": "string",
+          "examples": [
+            "cm",
+            "in"
+          ]
+        },
+        "distance": {
+          "type": "string",
+          "examples": [
+            "km",
+            "mi"
+          ]
+        },
+        "body_measurements": {
+          "type": "string",
+          "examples": [
+            "cm",
+            "in"
+          ]
+        },
+        "food_weight": {
+          "type": "string",
+          "examples": [
+            "g",
+            "oz"
+          ]
+        },
+        "water": {
+          "type": "string",
+          "examples": [
+            "l",
+            "ml",
+            "fl_oz"
+          ]
+        }
+      }
+    },
+    "brand_settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "primary_color": {
+          "type": "string"
+        },
+        "business_name": {
+          "type": "string"
+        }
+      }
+    },
+    "social_link": {
+      "type": "object",
+      "required": [
+        "platform",
+        "url"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "url": {
+          "$ref": "#/$defs/uri"
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_:-]{1,127}$"
+    },
+    "domain_name": {
+      "type": "string",
+      "enum": [
+        "coach",
+        "clients",
+        "forms",
+        "check_ins",
+        "nutrition",
+        "training",
+        "other"
+      ]
+    },
+    "day_of_week": {
+      "type": "string",
+      "enum": [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday"
+      ]
+    },
+    "date_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "uri": {
+      "type": "string",
+      "format": "uri"
+    },
+    "meal_plan": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "targets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "starts_at": {
+          "$ref": "#/$defs/date_time"
+        },
+        "ends_at": {
+          "$ref": "#/$defs/date_time"
+        },
+        "targets": {
+          "$ref": "#/$defs/nutrition_targets"
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "inactive",
+            "completed",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "embedded_exercise": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "muscle_groups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "equipment": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exercise_type": {
+          "type": "string",
+          "enum": [
+            "strength",
+            "cardio",
+            "mobility",
+            "stretching",
+            "conditioning",
+            "other",
+            "unknown"
+          ]
+        },
+        "instructions": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  }
+}

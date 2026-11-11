@@ -1,0 +1,971 @@
+{
+  "manifest": {
+    "schema_name": "open-coaching-data",
+    "schema_version": "1.0.0",
+    "package_id": "package_20260503_standard_seed_v1",
+    "created_at": "2026-05-03T09:30:00Z",
+    "created_by_tool": {
+      "name": "open-coaching-data-standard-seed",
+      "version": "0.1.0"
+    },
+    "source_platform": {
+      "name": "open-coaching-data-standard-seed"
+    },
+    "coach_identity": {
+      "display_name": "Maya Singh",
+      "email": "coach@example.com",
+      "business_name": "Maya Strength Coaching"
+    },
+    "included_domains": [
+      "coach",
+      "clients",
+      "forms",
+      "check_ins",
+      "nutrition",
+      "training"
+    ],
+    "record_counts": {
+      "coach_profiles": 1,
+      "coach_settings": 1,
+      "clients": 5,
+      "client_assignments": 15,
+      "form_templates": 2,
+      "form_submissions": 7,
+      "check_ins": 5,
+      "workout_plans": 5,
+      "workout_sessions": 5,
+      "workout_session_exercises": 6,
+      "meal_plans": 5
+    },
+    "warnings": [],
+    "validation_status": "valid"
+  },
+  "coach": {
+    "profile": {
+      "id": "coach_001",
+      "display_name": "Maya Singh",
+      "email": "coach@example.com",
+      "business_name": "Maya Strength Coaching",
+      "phone": "+1 555 010 2100",
+      "timezone": "America/New_York",
+      "bio": "Strength and nutrition coach helping busy professionals build sustainable routines.",
+      "tagline": "Simple strength, consistent nutrition, measurable progress.",
+      "specialties": [
+        "strength training",
+        "fat loss",
+        "routine building"
+      ],
+      "certifications": [
+        "CPT",
+        "Precision Nutrition Level 1"
+      ],
+      "social_links": [
+        {
+          "platform": "instagram",
+          "url": "https://example.com/mayastrength"
+        }
+      ]
+    },
+    "settings": {
+      "id": "coach_settings_001",
+      "timezone": "America/New_York",
+      "units": {
+        "weight": "lb",
+        "height": "in",
+        "distance": "mi",
+        "body_measurements": "in",
+        "food_weight": "g",
+        "water": "fl_oz"
+      },
+      "brand": {
+        "primary_color": "#2563eb",
+        "business_name": "Maya Strength Coaching"
+      }
+    }
+  },
+  "clients": {
+    "clients": [
+      {
+        "id": "client_001",
+        "display_name": "Jordan Lee",
+        "email": "jordan.lee@example.com",
+        "phone": "+1 555 010 3101",
+        "status": "active",
+        "date_of_birth": "1988-04-12",
+        "gender": "non_binary",
+        "height": {
+          "value": 70,
+          "unit": "in"
+        },
+        "weight": {
+          "value": 184.2,
+          "unit": "lb"
+        },
+        "check_in_day": "monday",
+        "joined_at": "2026-03-02T14:00:00Z",
+        "health_context": "Occasional right knee irritation during high-volume running."
+      },
+      {
+        "id": "client_002",
+        "display_name": "Avery Patel",
+        "email": "avery.patel@example.com",
+        "phone": "+1 555 010 3102",
+        "status": "active",
+        "date_of_birth": "1994-09-08",
+        "gender": "female",
+        "height": {
+          "value": 64,
+          "unit": "in"
+        },
+        "weight": {
+          "value": 141.6,
+          "unit": "lb"
+        },
+        "check_in_day": "thursday",
+        "joined_at": "2026-03-14T16:30:00Z",
+        "health_context": "No reported injuries. Prefers low-impact conditioning."
+      },
+      {
+        "id": "client_003",
+        "display_name": "Marcus Reed",
+        "email": "marcus.reed@example.com",
+        "phone": "+1 555 010 3103",
+        "status": "active",
+        "date_of_birth": "1978-11-22",
+        "gender": "male",
+        "height": {
+          "value": 72,
+          "unit": "in"
+        },
+        "weight": {
+          "value": 202.4,
+          "unit": "lb"
+        },
+        "check_in_day": "sunday",
+        "joined_at": "2026-02-18T13:15:00Z",
+        "health_context": "History of mild low-back tightness after long rides. Needs gradual deadlift loading."
+      },
+      {
+        "id": "client_004",
+        "display_name": "Sofia Martinez",
+        "email": "sofia.martinez@example.com",
+        "phone": "+1 555 010 3104",
+        "status": "active",
+        "date_of_birth": "1991-06-03",
+        "gender": "female",
+        "height": {
+          "value": 66,
+          "unit": "in"
+        },
+        "weight": {
+          "value": 158.0,
+          "unit": "lb"
+        },
+        "check_in_day": "wednesday",
+        "joined_at": "2026-04-05T17:00:00Z",
+        "health_context": "Postpartum return-to-training. Cleared for exercise, but needs pelvic-floor-aware progression."
+      },
+      {
+        "id": "client_005",
+        "display_name": "Noah Kim",
+        "email": "noah.kim@example.com",
+        "phone": "+1 555 010 3105",
+        "status": "active",
+        "date_of_birth": "1983-01-17",
+        "gender": "male",
+        "height": {
+          "value": 68,
+          "unit": "in"
+        },
+        "weight": {
+          "value": 176.8,
+          "unit": "lb"
+        },
+        "check_in_day": "friday",
+        "joined_at": "2026-03-28T09:00:00Z",
+        "health_context": "High work stress and frequent travel. Needs flexible workouts and simple meal defaults."
+      }
+    ],
+    "client_assignments": [
+      {
+        "id": "assignment_checkin_001",
+        "client_id": "client_001",
+        "assignment_type": "check_in_form",
+        "assigned_record_id": "form_checkin_001",
+        "status": "active",
+        "starts_at": "2026-03-02T14:00:00Z",
+        "frequency": "weekly",
+        "day_of_week": "monday"
+      },
+      {
+        "id": "assignment_workout_001",
+        "client_id": "client_001",
+        "assignment_type": "workout_plan",
+        "assigned_record_id": "workoutplan_001",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z"
+      },
+      {
+        "id": "assignment_checkin_002",
+        "client_id": "client_002",
+        "assignment_type": "check_in_form",
+        "assigned_record_id": "form_checkin_001",
+        "status": "active",
+        "starts_at": "2026-03-14T16:30:00Z",
+        "frequency": "weekly",
+        "day_of_week": "thursday"
+      },
+      {
+        "id": "assignment_workout_002",
+        "client_id": "client_002",
+        "assignment_type": "workout_plan",
+        "assigned_record_id": "workoutplan_002",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z"
+      },
+      {
+        "id": "assignment_checkin_003",
+        "client_id": "client_003",
+        "assignment_type": "check_in_form",
+        "assigned_record_id": "form_checkin_001",
+        "status": "active",
+        "starts_at": "2026-02-18T13:15:00Z",
+        "frequency": "weekly",
+        "day_of_week": "sunday"
+      },
+      {
+        "id": "assignment_workout_003",
+        "client_id": "client_003",
+        "assignment_type": "workout_plan",
+        "assigned_record_id": "workoutplan_003",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z"
+      },
+      {
+        "id": "assignment_checkin_004",
+        "client_id": "client_004",
+        "assignment_type": "check_in_form",
+        "assigned_record_id": "form_checkin_001",
+        "status": "active",
+        "starts_at": "2026-04-05T17:00:00Z",
+        "frequency": "weekly",
+        "day_of_week": "wednesday"
+      },
+      {
+        "id": "assignment_workout_004",
+        "client_id": "client_004",
+        "assignment_type": "workout_plan",
+        "assigned_record_id": "workoutplan_004",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z"
+      },
+      {
+        "id": "assignment_checkin_005",
+        "client_id": "client_005",
+        "assignment_type": "check_in_form",
+        "assigned_record_id": "form_checkin_001",
+        "status": "active",
+        "starts_at": "2026-03-28T09:00:00Z",
+        "frequency": "weekly",
+        "day_of_week": "friday"
+      },
+      {
+        "id": "assignment_workout_005",
+        "client_id": "client_005",
+        "assignment_type": "workout_plan",
+        "assigned_record_id": "workoutplan_005",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z"
+      },
+      {
+        "id": "assignment_meal_001",
+        "client_id": "client_001",
+        "assignment_type": "meal_plan",
+        "assigned_record_id": "mealplan_001",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z"
+      },
+      {
+        "id": "assignment_meal_002",
+        "client_id": "client_002",
+        "assignment_type": "meal_plan",
+        "assigned_record_id": "mealplan_002",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z"
+      },
+      {
+        "id": "assignment_meal_003",
+        "client_id": "client_003",
+        "assignment_type": "meal_plan",
+        "assigned_record_id": "mealplan_003",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z"
+      },
+      {
+        "id": "assignment_meal_004",
+        "client_id": "client_004",
+        "assignment_type": "meal_plan",
+        "assigned_record_id": "mealplan_004",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z"
+      },
+      {
+        "id": "assignment_meal_005",
+        "client_id": "client_005",
+        "assignment_type": "meal_plan",
+        "assigned_record_id": "mealplan_005",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z"
+      }
+    ]
+  },
+  "forms": {
+    "form_templates": [
+      {
+        "id": "form_intake_001",
+        "name": "New Client Intake",
+        "form_type": "intake",
+        "description": "Initial coaching intake for goals, training history, equipment, and constraints.",
+        "fields": [
+          {
+            "id": "field_intake_goal",
+            "label": "What is your main goal for the next 12 weeks?",
+            "field_type": "textarea",
+            "required": true,
+            "order": 1
+          },
+          {
+            "id": "field_intake_equipment",
+            "label": "What training equipment do you have access to?",
+            "field_type": "multiple_choice",
+            "required": true,
+            "order": 2,
+            "options": [
+              "commercial gym",
+              "home dumbbells",
+              "resistance bands",
+              "cardio machine",
+              "none"
+            ]
+          },
+          {
+            "id": "field_intake_constraints",
+            "label": "Any injuries, schedule limits, or lifestyle constraints?",
+            "field_type": "textarea",
+            "required": false,
+            "order": 3
+          }
+        ],
+        "created_at": "2026-02-15T12:00:00Z"
+      },
+      {
+        "id": "form_checkin_001",
+        "name": "Weekly Coaching Check-In",
+        "form_type": "check_in",
+        "description": "Weekly review for training, nutrition, recovery, body metrics, and support requests.",
+        "fields": [
+          {
+            "id": "field_weight",
+            "label": "Current body weight",
+            "field_type": "measurement",
+            "required": true,
+            "order": 1,
+            "unit": "lb"
+          },
+          {
+            "id": "field_waist",
+            "label": "Waist measurement",
+            "field_type": "measurement",
+            "required": false,
+            "order": 2,
+            "unit": "in"
+          },
+          {
+            "id": "field_sleep",
+            "label": "Average sleep hours",
+            "field_type": "number",
+            "required": true,
+            "order": 3
+          },
+          {
+            "id": "field_adherence",
+            "label": "Nutrition adherence",
+            "field_type": "rating",
+            "required": true,
+            "order": 4,
+            "min_value": 1,
+            "max_value": 10
+          },
+          {
+            "id": "field_support",
+            "label": "What do you need support with this week?",
+            "field_type": "textarea",
+            "required": false,
+            "order": 5
+          }
+        ],
+        "created_at": "2026-02-20T12:00:00Z"
+      }
+    ],
+    "form_submissions": [
+      {
+        "id": "submission_intake_001",
+        "client_id": "client_001",
+        "form_template_id": "form_intake_001",
+        "submitted_at": "2026-03-02T14:20:00Z",
+        "answers": [
+          {
+            "field_id": "field_intake_goal",
+            "label": "What is your main goal for the next 12 weeks?",
+            "value": "Lose fat while keeping barbell strength stable."
+          },
+          {
+            "field_id": "field_intake_equipment",
+            "label": "What training equipment do you have access to?",
+            "value": [
+              "commercial gym",
+              "adjustable dumbbells"
+            ]
+          },
+          {
+            "field_id": "field_intake_constraints",
+            "label": "Any injuries, schedule limits, or lifestyle constraints?",
+            "value": "Right knee can get irritated after running."
+          }
+        ]
+      },
+      {
+        "id": "submission_intake_004",
+        "client_id": "client_004",
+        "form_template_id": "form_intake_001",
+        "submitted_at": "2026-04-05T17:20:00Z",
+        "answers": [
+          {
+            "field_id": "field_intake_goal",
+            "label": "What is your main goal for the next 12 weeks?",
+            "value": "Return to training safely postpartum and feel strong again."
+          },
+          {
+            "field_id": "field_intake_equipment",
+            "label": "What training equipment do you have access to?",
+            "value": [
+              "home dumbbells",
+              "walking stroller"
+            ]
+          },
+          {
+            "field_id": "field_intake_constraints",
+            "label": "Any injuries, schedule limits, or lifestyle constraints?",
+            "value": "30 minute sessions during naps; needs conservative core progression."
+          }
+        ]
+      },
+      {
+        "id": "submission_checkin_001",
+        "client_id": "client_001",
+        "form_template_id": "form_checkin_001",
+        "submitted_at": "2026-04-28T12:00:00Z",
+        "answers": [
+          {
+            "field_id": "field_weight",
+            "label": "Current body weight",
+            "value": 184.2,
+            "unit": "lb"
+          },
+          {
+            "field_id": "field_waist",
+            "label": "Waist measurement",
+            "value": 34.8,
+            "unit": "in"
+          },
+          {
+            "field_id": "field_sleep",
+            "label": "Average sleep hours",
+            "value": 6.4
+          },
+          {
+            "field_id": "field_adherence",
+            "label": "Nutrition adherence",
+            "value": 8
+          },
+          {
+            "field_id": "field_support",
+            "label": "What do you need support with this week?",
+            "value": "Need easier lunches for office days."
+          }
+        ]
+      },
+      {
+        "id": "submission_checkin_002",
+        "client_id": "client_002",
+        "form_template_id": "form_checkin_001",
+        "submitted_at": "2026-05-01T11:30:00Z",
+        "answers": [
+          {
+            "field_id": "field_weight",
+            "label": "Current body weight",
+            "value": 141.6,
+            "unit": "lb"
+          },
+          {
+            "field_id": "field_waist",
+            "label": "Waist measurement",
+            "value": 29.5,
+            "unit": "in"
+          },
+          {
+            "field_id": "field_sleep",
+            "label": "Average sleep hours",
+            "value": 7.2
+          },
+          {
+            "field_id": "field_adherence",
+            "label": "Nutrition adherence",
+            "value": 7
+          },
+          {
+            "field_id": "field_support",
+            "label": "What do you need support with this week?",
+            "value": "Need help making workouts fit around late meetings."
+          }
+        ]
+      },
+      {
+        "id": "submission_checkin_003",
+        "client_id": "client_003",
+        "form_template_id": "form_checkin_001",
+        "submitted_at": "2026-05-03T08:30:00Z",
+        "answers": [
+          {
+            "field_id": "field_weight",
+            "label": "Current body weight",
+            "value": 202.4,
+            "unit": "lb"
+          },
+          {
+            "field_id": "field_waist",
+            "label": "Waist measurement",
+            "value": 37.2,
+            "unit": "in"
+          },
+          {
+            "field_id": "field_sleep",
+            "label": "Average sleep hours",
+            "value": 6.8
+          },
+          {
+            "field_id": "field_adherence",
+            "label": "Nutrition adherence",
+            "value": 8
+          },
+          {
+            "field_id": "field_support",
+            "label": "What do you need support with this week?",
+            "value": "Need help balancing bike ride fatigue with deadlift day."
+          }
+        ]
+      },
+      {
+        "id": "submission_checkin_004",
+        "client_id": "client_004",
+        "form_template_id": "form_checkin_001",
+        "submitted_at": "2026-04-30T15:00:00Z",
+        "answers": [
+          {
+            "field_id": "field_weight",
+            "label": "Current body weight",
+            "value": 158.0,
+            "unit": "lb"
+          },
+          {
+            "field_id": "field_waist",
+            "label": "Waist measurement",
+            "value": 33.0,
+            "unit": "in"
+          },
+          {
+            "field_id": "field_sleep",
+            "label": "Average sleep hours",
+            "value": 6.1
+          },
+          {
+            "field_id": "field_adherence",
+            "label": "Nutrition adherence",
+            "value": 9
+          },
+          {
+            "field_id": "field_support",
+            "label": "What do you need support with this week?",
+            "value": "Need reassurance about progressing without rushing."
+          }
+        ]
+      },
+      {
+        "id": "submission_checkin_005",
+        "client_id": "client_005",
+        "form_template_id": "form_checkin_001",
+        "submitted_at": "2026-05-02T18:00:00Z",
+        "answers": [
+          {
+            "field_id": "field_weight",
+            "label": "Current body weight",
+            "value": 176.8,
+            "unit": "lb"
+          },
+          {
+            "field_id": "field_waist",
+            "label": "Waist measurement",
+            "value": 36.4,
+            "unit": "in"
+          },
+          {
+            "field_id": "field_sleep",
+            "label": "Average sleep hours",
+            "value": 5.9
+          },
+          {
+            "field_id": "field_adherence",
+            "label": "Nutrition adherence",
+            "value": 6
+          },
+          {
+            "field_id": "field_support",
+            "label": "What do you need support with this week?",
+            "value": "Need a default airport and hotel breakfast plan."
+          }
+        ]
+      }
+    ]
+  },
+  "check_ins": [
+    {
+      "id": "checkin_001",
+      "client_id": "client_001",
+      "form_submission_id": "submission_checkin_001",
+      "check_in_number": 5,
+      "checked_in_at": "2026-04-28T12:00:00Z"
+    },
+    {
+      "id": "checkin_002",
+      "client_id": "client_002",
+      "form_submission_id": "submission_checkin_002",
+      "check_in_number": 3,
+      "checked_in_at": "2026-05-01T11:30:00Z"
+    },
+    {
+      "id": "checkin_003",
+      "client_id": "client_003",
+      "form_submission_id": "submission_checkin_003",
+      "check_in_number": 8,
+      "checked_in_at": "2026-05-03T08:30:00Z"
+    },
+    {
+      "id": "checkin_004",
+      "client_id": "client_004",
+      "form_submission_id": "submission_checkin_004",
+      "check_in_number": 2,
+      "checked_in_at": "2026-04-30T15:00:00Z"
+    },
+    {
+      "id": "checkin_005",
+      "client_id": "client_005",
+      "form_submission_id": "submission_checkin_005",
+      "check_in_number": 4,
+      "checked_in_at": "2026-05-02T18:00:00Z"
+    }
+  ],
+  "nutrition": {
+    "meal_plans": [
+      {
+        "id": "mealplan_001",
+        "name": "Jordan Lee Fat Loss Macros",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z",
+        "targets": {
+          "calories_kcal": 2100,
+          "protein_g": 165,
+          "carbohydrates_g": 210,
+          "fat_g": 65
+        }
+      },
+      {
+        "id": "mealplan_002",
+        "name": "Avery Patel Recomposition Macros",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z",
+        "targets": {
+          "calories_kcal": 1850,
+          "protein_g": 125,
+          "carbohydrates_g": 205,
+          "fat_g": 55
+        }
+      },
+      {
+        "id": "mealplan_003",
+        "name": "Marcus Reed Performance Macros",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z",
+        "targets": {
+          "calories_kcal": 2450,
+          "protein_g": 170,
+          "carbohydrates_g": 300,
+          "fat_g": 70
+        }
+      },
+      {
+        "id": "mealplan_004",
+        "name": "Sofia Martinez Travel-Friendly Macros",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z",
+        "targets": {
+          "calories_kcal": 2050,
+          "protein_g": 135,
+          "carbohydrates_g": 230,
+          "fat_g": 65
+        }
+      },
+      {
+        "id": "mealplan_005",
+        "name": "Noah Kim Sustainable Fat Loss Macros",
+        "status": "active",
+        "starts_at": "2026-04-01T00:00:00Z",
+        "targets": {
+          "calories_kcal": 2000,
+          "protein_g": 150,
+          "carbohydrates_g": 210,
+          "fat_g": 60
+        }
+      }
+    ]
+  },
+  "training": {
+    "workout_plans": [
+      {
+        "id": "workoutplan_001",
+        "name": "Three Day Strength Base",
+        "description": "Full-body strength plan with two alternating sessions and low-impact cardio.",
+        "notes": "Use conservative loading and progress only when all working sets stay at the target RIR."
+      },
+      {
+        "id": "workoutplan_002",
+        "name": "Beginner Home Strength",
+        "description": "Short dumbbell and band sessions for beginner consistency."
+      },
+      {
+        "id": "workoutplan_003",
+        "name": "Hybrid 10K Strength Maintenance",
+        "description": "Run-focused plan with two strength sessions."
+      },
+      {
+        "id": "workoutplan_004",
+        "name": "Postpartum Return To Training",
+        "description": "Conservative full-body sessions with core control and walking."
+      },
+      {
+        "id": "workoutplan_005",
+        "name": "Travel-Proof Two Day Plan",
+        "description": "Flexible hotel gym sessions for busy travel weeks."
+      }
+    ],
+    "workout_sessions": [
+      {
+        "id": "session_001",
+        "workout_plan_id": "workoutplan_001",
+        "name": "Day 1 - Lower + Push",
+        "day_index": 1,
+        "order": 1,
+        "warmup": "5 minutes easy movement and mobility.",
+        "cooldown": "Easy breathing and light stretching.",
+        "notes": "Keep transitions simple and coach the main lifts before adding volume."
+      },
+      {
+        "id": "session_002",
+        "workout_plan_id": "workoutplan_002",
+        "name": "Home Full Body A",
+        "day_index": 1,
+        "order": 1,
+        "warmup": "5 minutes easy movement and mobility.",
+        "cooldown": "Easy breathing and light stretching."
+      },
+      {
+        "id": "session_003",
+        "workout_plan_id": "workoutplan_003",
+        "name": "Strength Maintenance A",
+        "day_index": 1,
+        "order": 1,
+        "warmup": "5 minutes easy movement and mobility.",
+        "cooldown": "Easy breathing and light stretching."
+      },
+      {
+        "id": "session_004",
+        "workout_plan_id": "workoutplan_004",
+        "name": "Core + Dumbbell Rebuild",
+        "day_index": 1,
+        "order": 1,
+        "warmup": "5 minutes easy movement and mobility.",
+        "cooldown": "Easy breathing and light stretching."
+      },
+      {
+        "id": "session_005",
+        "workout_plan_id": "workoutplan_005",
+        "name": "Hotel Gym Minimum Effective Dose",
+        "day_index": 1,
+        "order": 1,
+        "warmup": "5 minutes easy movement and mobility.",
+        "cooldown": "Easy breathing and light stretching."
+      }
+    ],
+    "workout_session_exercises": [
+      {
+        "id": "session_exercise_001",
+        "workout_session_id": "session_001",
+        "order": 1,
+        "section": "main",
+        "prescription": {
+          "sets": 3,
+          "reps": "5",
+          "rir": 2,
+          "rest": {
+            "value": 2,
+            "unit": "minutes"
+          }
+        },
+        "exercise": {
+          "name": "Back Squat",
+          "muscle_groups": [
+            "quads",
+            "glutes"
+          ],
+          "equipment": [
+            "barbell",
+            "rack"
+          ],
+          "exercise_type": "strength"
+        },
+        "notes": "RIR 2. Keep bracing consistent."
+      },
+      {
+        "id": "session_exercise_002",
+        "workout_session_id": "session_001",
+        "order": 2,
+        "section": "main",
+        "prescription": {
+          "sets": 3,
+          "reps": "8-10",
+          "rir": 2,
+          "rest": {
+            "value": 90,
+            "unit": "seconds"
+          }
+        },
+        "exercise": {
+          "name": "Dumbbell Bench Press",
+          "muscle_groups": [
+            "chest",
+            "triceps"
+          ],
+          "equipment": [
+            "dumbbells",
+            "bench"
+          ],
+          "exercise_type": "strength"
+        }
+      },
+      {
+        "id": "session_exercise_003",
+        "workout_session_id": "session_002",
+        "order": 1,
+        "section": "main",
+        "prescription": {
+          "sets": 3,
+          "reps": "10",
+          "rir": 3,
+          "rest": {
+            "value": 60,
+            "unit": "seconds"
+          }
+        },
+        "exercise": {
+          "name": "Goblet Squat",
+          "muscle_groups": [
+            "quads",
+            "glutes"
+          ],
+          "equipment": [
+            "dumbbell"
+          ],
+          "exercise_type": "strength"
+        }
+      },
+      {
+        "id": "session_exercise_004",
+        "workout_session_id": "session_003",
+        "order": 1,
+        "section": "main",
+        "prescription": {
+          "duration": {
+            "value": 35,
+            "unit": "minutes"
+          }
+        },
+        "exercise": {
+          "name": "Zone 2 Run",
+          "muscle_groups": [
+            "cardio"
+          ],
+          "equipment": [
+            "outdoor"
+          ],
+          "exercise_type": "cardio"
+        }
+      },
+      {
+        "id": "session_exercise_005",
+        "workout_session_id": "session_004",
+        "order": 1,
+        "section": "main",
+        "prescription": {
+          "sets": 2,
+          "reps": "8 each side"
+        },
+        "exercise": {
+          "name": "Dead Bug",
+          "muscle_groups": [
+            "core"
+          ],
+          "equipment": [
+            "bodyweight"
+          ],
+          "exercise_type": "mobility"
+        }
+      },
+      {
+        "id": "session_exercise_006",
+        "workout_session_id": "session_005",
+        "order": 1,
+        "section": "main",
+        "prescription": {
+          "sets": 2,
+          "reps": "10",
+          "rir": 2,
+          "rest": {
+            "value": 60,
+            "unit": "seconds"
+          }
+        },
+        "exercise": {
+          "name": "Dumbbell Bench Press",
+          "muscle_groups": [
+            "chest",
+            "triceps"
+          ],
+          "equipment": [
+            "dumbbells",
+            "bench"
+          ],
+          "exercise_type": "strength"
+        }
+      }
+    ]
+  }
+}

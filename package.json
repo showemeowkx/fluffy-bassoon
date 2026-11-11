@@ -1,0 +1,46 @@
+{
+  "name": "@assistantcoach/kahunas-exporter",
+  "version": "0.1.36",
+  "private": false,
+  "type": "module",
+  "description": "Local data portability helper for exporting a coach's own Kahunas fitness coaching data.",
+  "homepage": "https://www.npmjs.com/package/@assistantcoach/kahunas-exporter",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yashasvigirdhar/fitness-coaching-kahunas-exporter.git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "kahunas",
+    "fitness-coaching",
+    "data-export",
+    "codex-skill"
+  ],
+  "bin": {
+    "kahunas-exporter": "skills/kahunas-export/scripts/install-skill.mjs"
+  },
+  "files": [
+    "README.md",
+    "data/",
+    "docs/",
+    "scripts/setup-mac.sh",
+    "scripts/setup-linux.sh",
+    "scripts/setup-windows.ps1",
+    "skills/",
+    "tests/"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "check": "node --check skills/kahunas-export/scripts/install-skill.mjs && node --check skills/kahunas-export/scripts/start-browser.mjs && node --check skills/kahunas-export/scripts/export-kahunas.mjs && node --check skills/kahunas-export/scripts/validate-export.mjs && node --check skills/kahunas-export/scripts/redact-run-log.mjs && node --check tests/run-fixture-export.mjs && node tests/check-public-docs.mjs && node tests/check-launch-prompt.mjs",
+    "test:fixture": "node tests/run-fixture-export.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "playwright": "^1.59.1"
+  }
+}
