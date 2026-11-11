@@ -56,6 +56,7 @@ Next to the V1 package the exporter writes one JSON file per area with the app's
 | `coach.json` | coach user and `settings.general` |
 | `library-programs.json` | `["workouts","list",{mode:"programs"}]` (paginated) + `["workouts","plans",id,null,null,"full"]` from `/coach/builder/workouts/plans/$planId` |
 | `library-meal-plans.json` | `["nutrition","plans","list",...]` (paginated) + every query loaded on `/coach/builder/nutrition/plans/$planId` |
+| `custom-foods.json`, `library-meals.json`, `library-days.json`, `library-supplement-plans.json` | nutrition builder tabs (`/coach/builder/nutrition/` with search `tab: "food" | "meals" | "days" | "supplements"`), keys `["nutrition","foods"|"meal-templates"|"day-templates"|"supplements","list",...]`. Each list loads only once its tab is open; all paginated. |
 | `progress-photos.json` | `["clients","detail",id,"gallery","images","newest"]`, an infinite query of photo groups. Page rewriting does not apply to it yet, so only the first loaded page is kept (logged under `skipped`). Photos are not downloaded. |
 | `labs-and-cycle.json` | every query loaded on the client's `labs/` and `cycle` pages |
 | `content.json` | every query loaded on `/coach/content/docs/` (including legal documents), `/coach/content/library` and `/coach/builder/education/` |

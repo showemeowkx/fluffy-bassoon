@@ -951,6 +951,10 @@ function createRawStore() {
     library_exercises: [],
     library_programs: [],
     library_meal_plans: [],
+    custom_foods: [],
+    library_meals: [],
+    library_days: [],
+    library_supplement_plans: [],
     recipes: [],
     progress_photos: [],
     labs_and_cycle: [],
@@ -1103,6 +1107,21 @@ async function extractLibraryRaw(kx, runLog) {
     RAW.library_meal_plans.push({ source_id: plan.id, list_row: plan, queries: visit.added });
   }
 
+  // Builder tabs: the list query of each tab only loads once that tab is open.
+  const nutritionTabs = [
+    ["food", "foods", "custom_foods", "custom foods"],
+    ["meals", "meal-templates", "library_meals", "saved meals"],
+    ["days", "day-templates", "library_days", "saved days"],
+    ["supplements", "supplements", "library_supplement_plans", "supplement plans"]
+  ];
+  for (const [tab, key, area, label] of nutritionTabs) {
+    progress(`Exporting your ${label}.`);
+    await kx.visit("/coach/builder/nutrition/", {}, { page: 1, pageSize: LIST_PAGE_SIZE, sort: "updated_desc", tab, segment: "all" });
+    const list = await kx.fetchAll(["nutrition", key, "list"]);
+    RAW[area] = list.rows;
+    runLog.pagination[area] = list.pages;
+  }
+
   progress("Exporting your content library.");
   for (const [area, route] of [["docs", "/coach/content/docs/"], ["library", "/coach/content/library"], ["education", "/coach/builder/education/"]]) {
     const visit = await kx.visit(route, {});
@@ -1153,6 +1172,7 @@ const RAW_README = [
   "- `habits.json`, `nutrition-logs.json`: week-by-week habit and food logs",
   "- `forms.json`, `library-exercises.json`, `recipes.json`: the coach's own forms, exercises and recipes",
   "- `library-programs.json`, `library-meal-plans.json`: every program and meal plan in the coach's library, assigned or not",
+  "- `custom-foods.json`, `library-meals.json`, `library-days.json`, `library-supplement-plans.json`: the coach's own foods, saved meals, saved days and supplement plans",
   "- `progress-photos.json`: progress photo list per client (links only; the photos themselves are not downloaded)",
   "- `labs-and-cycle.json`, `content.json`: labs, cycle tracking, docs, content library and courses",
   "- `coach.json`: coach account and general settings",
