@@ -485,7 +485,7 @@ async function extractFormTemplates(kx, runLog) {
       .map((field, index) => compactObject({
         id: fieldId(row.id, field.key || field.id || String(index + 1)),
         label: field.label || field.key || `Question ${index + 1}`,
-        field_type: mapFieldType(field.type),
+        field_type: mapFieldType(field.type) !== "unknown" ? mapFieldType(field.type) : mapFieldType(`${field.config?.profileField || ""} ${field.key || ""}`),
         required: Boolean(field.required),
         order: index + 1,
         options: optionLabels(field.options),
