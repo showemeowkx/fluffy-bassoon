@@ -1,29 +1,63 @@
 # Kahunas API Map
 
-This file is intentionally a working map. Prefer authenticated browser-context API data over DOM scraping whenever possible.
+Mapped against the current Kahunas web app in November 2026. The old `kahunas.io` PHP pages (`/coach/clients`, `/coach/clients/edit/{uuid}`, `/coach/workout_programs/preview/{uuid}`, ...) no longer exist. `https://kahunas.io/login` still works as the entry point and redirects to the coach's workspace.
 
-Current known reliable surfaces from pilot runs:
+## How the app loads data
 
-- `/coach/clients` for roster counters, active/archive status, client rows, packages, last check-in, check-in day, and client detail links.
-- `/coach/clients/edit/{client_uuid}` for assignment metadata, including nutrition plan, workout plans, check-in form, check-in frequency, and weekdays.
-- `/coach/clients/view/{client_uuid}` for client detail tabs: check-ins, Q&A, nutrition, workout, and logs.
-- `/coach/configuration` for general settings after selecting the General settings tab.
-- `/profile/settings` and `/profile/overview` for coach profile fields.
-- `/coach/diet_plans/macro` and nutrition preview routes for macro meal plan data.
-- `/coach/workout_programs/preview/{program_uuid}` for workout plan sessions and prescribed exercises.
+- Every coach has a workspace host: `https://<workspace>.kahunas.app`.
+- The app is a TanStack Start single-page app. The router is exposed as `window.__TSR_ROUTER__`, and its TanStack Query client is at `window.__TSR_ROUTER__.options.context.queryClient`.
+- Data comes from server functions at `/_serverFn/<sha256>`. The hashes change with every Kahunas deploy and the responses are seroval-encoded, so **never hard-code server-function URLs**.
+- `scripts/kahunas-app-bridge.mjs` uses the app itself instead:
+  1. It navigates with `router.navigate({ to, params, search })` and waits until `queryClient.isFetching() === 0`.
+  2. It reads the decoded results from the query cache by query key.
+  3. It paginates by temporarily wrapping `fetch` to rewrite `page` and `pageSize` inside the server-function payload. It then calls the cached query's `queryFn` again, so the app decodes each page itself. The server accepts `pageSize: 100`.
 
-Live extractor rule:
+The seroval payload of a paginated query looks like:
 
-1. Inspect network/API responses available from the logged-in browser context.
-2. Prefer JSON API responses.
-3. Use DOM text only when API data is not available.
-4. Record failures and fallback reasons in the local run log, not in the export package.
+```json
+{"t":{"t":10,"i":0,"p":{"k":["data"],"v":[{"t":10,"i":1,"p":{"k":["page","pageSize","segment","sort"],"v":[{"t":0,"s":1},{"t":0,"s":25},{"t":1,"s":"all"},{"t":1,"s":"name_asc"}]},"o":3}]},"o":0},"f":127,"m":[]}
+```
 
-Do not click destructive actions:
+## Routes and query keys
 
-- delete client
-- reset password
-- resend login details
-- cancel membership
-- submit edit-client wizard
-- billing/Stripe management actions
+| Domain | Route (router `to`) | Query key | Notes |
+|---|---|---|---|
+| Coach identity | any `/coach` route | `["coach-route-context","context"]` | `user.{firstName,lastName,email}`, `displayTimeZone` |
+| Coach settings | `/coach/settings` | `["settings","detail"]` | `general.timezone`, `general.unitDefaults.{weightUnit,heightUnit,foodUnit,waterUnit}` |
+| Client roster | `/coach/people/clients` with search `{page,pageSize,segment,sort}` | `["clients","list",{page,pageSize,segment,sort}]` | paginated `{rows,page,pageCount,pageSize,totalRows}`; segments include `all` and `archived` |
+| Client summary | `/coach/people/clients/$clientId` | `["clients","detail",id,"deleted-inclusive"]` | `summary.{email,phone,birthDate,sex,status,clientStartDate}`, `assignedCheckInSchedule` |
+| Assigned workout plans | same | `["clients","detail",id,"workout-plans","active"]` | full plan: `plans[].days[].blocks[].items[]` with `exerciseName`, `prescription` |
+| Assigned meal plan | same | `["clients","detail",id,"meal-plan","active"]` | `plans[].days[].meals[]` with `effectiveMacros`, food `items[]` |
+| Assigned forms | `/coach/people/clients/$clientId/plans` | `["forms","assigned","client",id]` | |
+| Check-in history | `/coach/people/clients/$clientId/check-ins/` | `["clients","detail",id,"check-in-history",{clientId,page,pageSize,range}]` | paginated; page size is component state (default 6), not URL; `lifetime.submittedCount` is the total |
+| Check-in detail | `/coach/people/clients/$clientId/check-ins/$checkInId` | new queries after navigation | answers are found with a generic question/answer walker |
+| Initial Q&A | `/coach/people/clients/$clientId/initial-qa` | `["clients","detail",id,"initial-qa","submissions"]` | `submissions[]` |
+| Form templates | `/coach/builder/forms/` | `["forms","list",{kind,page,pageSize,sort,status}]` | paginated |
+| Form detail | `/coach/builder/forms/$formId` | `["forms","detail",formId]` | `schema.fields[].{key,label,type,required,options,position}` |
+| Workout library | `/coach/builder/workouts/` | `["workouts","list",{mode,page,pageSize,segment,sort}]` | not exported (assigned plans only) |
+| Nutrition library | `/coach/builder/nutrition/` | `["nutrition","plans","list",{...}]` | not exported (assigned plans only) |
+
+You can list all route ids with `Object.keys(window.__TSR_ROUTER__.routesById)`.
+
+## Not verified yet
+
+The pilot account had no submitted check-ins or initial Q&A answers. As a result:
+
+- check-in row field names (`id`, `submittedAt`/`occurredAt`, `formId`/`formTitle`) are handled defensively, and
+- answers are found by searching the detail data for lists of `{label|question|prompt, value|answer|response}`.
+
+Prescription fields (`sets`, `reps`, `rpe`, `rir`, `restSeconds`, `tempo`, set arrays) are handled the same defensive way. Before trusting those counts on an account that has this data, check them against what the coach sees in Kahunas.
+
+## Live extractor rules
+
+1. Use the bridge (router plus query cache). Do not scrape DOM text, and do not hard-code `/_serverFn/` hashes.
+2. Exhaust pagination for every paginated query and record per-page evidence in the run log under `pagination`.
+3. Record failures and fallback reasons in the run log under `skipped`, not in the export package.
+
+## Do not click destructive actions
+
+- delete or archive client
+- reset password or resend invites
+- cancel membership or packages
+- save buttons in builders or client edit screens
+- billing, payments, or Stripe actions

@@ -2,8 +2,9 @@
 import { existsSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
-const root = resolve(new URL("..", import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const sourceLibPath = existsSync(join(root, "skills", "kahunas-export", "scripts", "lib.mjs"))
   ? "../skills/kahunas-export/scripts/lib.mjs"
   : "../scripts/lib.mjs";
