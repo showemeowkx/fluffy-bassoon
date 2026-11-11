@@ -23,7 +23,7 @@ import { installKahunasBridge } from "./kahunas-app-bridge.mjs";
 const args = parseArgs(process.argv.slice(2));
 
 if (args.help) {
-  console.log(`Usage: node skills/kahunas-export/scripts/export-kahunas.mjs [--run-dir DIR] [--fixture FILE] [--cdp-url URL]\n\nCreates a local Kahunas coaching data export package.\n\nOptions:\n  --run-dir DIR  Run folder. Defaults to ~/KahunasExports/kahunas/runs/<timestamp>.\n  --fixture FILE Use an existing standard package JSON as input for local testing.\n  --cdp-url URL  Connect to a local browser launched by start-browser.mjs.\n  --help         Show this help text.\n`);
+  console.log(`Usage: node skills/kahunas-export/scripts/export-kahunas.mjs [--run-dir DIR] [--fixture FILE] [--cdp-url URL]\n\nCreates a local Kahunas coaching data export package.\n\nOptions:\n  --run-dir DIR  Run folder. Defaults to ~/KahunasExports/kahunas/runs/<timestamp>.\n  --fixture FILE Use an existing standard package JSON as input for local testing.\n  --cdp-url URL  Connect to a local browser launched by start-browser.mjs.\n  --history-weeks N  Weeks of habit and food logs to export per client. Defaults to 104.\n  --help         Show this help text.\n`);
   process.exit(0);
 }
 
@@ -93,6 +93,8 @@ async function packageFromFixture() {
 
 const CLIENT_ROUTE = "/coach/people/clients/$clientId";
 const LIST_PAGE_SIZE = 100;
+const HISTORY_WEEKS = Math.max(1, Number(args["history-weeks"]) || 104);
+const RAW = createRawStore();
 
 async function packageFromLiveBrowser() {
   if (!args["cdp-url"]) {
@@ -111,6 +113,9 @@ async function packageFromLiveBrowser() {
 
     await page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
     const loginState = await waitForKahunasLogin(page);
+    // Start from a clean page so an older bridge left in the page cannot interfere.
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+    await page.waitForFunction(() => window.__TSR_ROUTER__?.options?.context?.queryClient, null, { timeout: 30000 });
 
     const kx = createBridge(page);
     const runLog = {
@@ -149,6 +154,7 @@ function createBridge(page) {
     find: (pattern) => call("find", pattern),
     findOne: async (pattern) => (await call("find", pattern))[0]?.data,
     fetchAll: (pattern, pageSize = LIST_PAGE_SIZE) => call("fetchAll", pattern, pageSize),
+    fetchWith: (pattern, override) => call("fetchWith", pattern, override),
     routeIds: () => call("routeIds")
   };
 }
@@ -213,6 +219,11 @@ async function extractLivePackage(kx, runLog) {
   const profile = mapCoachProfile(routeContext);
   progress("Exporting coach settings.");
   const settings = mapCoachSettings(settingsDetail, routeContext);
+  RAW.coach = {
+    user: routeContext?.user,
+    display_time_zone: routeContext?.displayTimeZone,
+    settings_general: settingsDetail?.general
+  };
 
   progress("Exporting form templates.");
   const { formTemplates, formTemplateBySourceId } = await extractFormTemplates(kx, runLog);
@@ -248,6 +259,10 @@ async function extractLivePackage(kx, runLog) {
     }
 
     clients.push(mapClient(row, detail?.summary));
+    RAW.clients.push({ client_id: clientId, source_id: row.id, roster_row: row, detail, assigned_forms: assignedForms });
+    RAW.workout_plans.push({ client_id: clientId, source_client_id: row.id, data: workoutData });
+    RAW.meal_plans.push({ client_id: clientId, source_client_id: row.id, data: mealData });
+    RAW.supplements.push({ client_id: clientId, source_client_id: row.id, data: await kx.findOne(["clients", "detail", row.id, "supplements", "active"]) });
 
     for (const plan of workoutData?.plans || []) {
       if (!workoutPlans.has(plan.id)) {
@@ -287,6 +302,7 @@ async function extractLivePackage(kx, runLog) {
     formSubmissions.push(...intake);
 
     const clientCheckIns = await extractClientCheckIns(kx, row, clientId, formTemplateBySourceId, reconstructed, runLog);
+    await extractClientHistoryRaw(kx, row, clientId, detail, runLog);
     for (const item of clientCheckIns) {
       checkIns.push(item.checkIn);
       if (item.submission) {
@@ -295,6 +311,7 @@ async function extractLivePackage(kx, runLog) {
     }
   }
   progress(`Exported ${clients.length} clients.`);
+  await extractLibraryRaw(kx, runLog);
 
   progress("Preparing workout plans.");
   const training = mapWorkoutPlans([...workoutPlans.values()]);
@@ -505,6 +522,7 @@ async function extractFormTemplates(kx, runLog) {
     template.__fieldsByLabel = new Map(fields.map((field) => [normalizeNameKey(field.label), field.id]));
     formTemplates.push(template);
     formTemplateBySourceId.set(row.id, template);
+    RAW.forms.push({ source_id: row.id, list_row: row, detail });
   }
   progress(`Found ${formTemplates.length} form templates.`);
   return { formTemplates, formTemplateBySourceId };
@@ -685,6 +703,7 @@ function normalizeAnswer(value) {
 async function extractIntakeSubmissions(kx, clientSourceId, clientId, formTemplateBySourceId, reconstructed, runLog) {
   await kx.visit(`${CLIENT_ROUTE}/initial-qa`, { clientId: clientSourceId });
   const data = await kx.findOne(["clients", "detail", clientSourceId, "initial-qa", "submissions"]);
+  RAW.initial_qa.push({ client_id: clientId, source_client_id: clientSourceId, data });
   const submissions = [];
   for (const submission of data?.submissions || []) {
     const rawAnswers = findAnswerList(submission);
@@ -713,6 +732,8 @@ async function extractClientCheckIns(kx, row, clientId, formTemplateBySourceId, 
   await kx.visit(`${CLIENT_ROUTE}/check-ins/`, { clientId: row.id });
   const history = await kx.fetchAll(["clients", "detail", row.id, "check-in-history"]);
   runLog.pagination[`check_ins_${clientId}`] = history.pages;
+  const rawCheckIns = { client_id: clientId, source_client_id: row.id, history_rows: history.rows, details: [] };
+  RAW.check_ins.push(rawCheckIns);
   const lifetime = (await kx.findOne(["clients", "detail", row.id, "check-in-history"]))?.lifetime;
   if (lifetime?.submittedCount !== undefined && history.rows.length < lifetime.submittedCount) {
     runLog.skipped.push({ area: "check_ins", client_id: clientId, reason: `read ${history.rows.length} of ${lifetime.submittedCount} check-ins` });
@@ -744,6 +765,7 @@ async function extractClientCheckIns(kx, row, clientId, formTemplateBySourceId, 
       ...visit.added.map((entry) => entry.data),
       ...(await kx.find(["clients", "detail", row.id])).filter((entry) => JSON.stringify(entry.key).includes(checkInSourceId)).map((entry) => entry.data)
     ];
+    rawCheckIns.details.push({ check_in_source_id: checkInSourceId, queries: visit.added });
     let rawAnswers = findAnswerList(related);
     if (!rawAnswers.length) {
       rawAnswers = findAnswerList(checkInRow);
@@ -904,6 +926,196 @@ function mapMealPlan(plan) {
       fat_g: round(macros?.fat)
     })
   });
+}
+
+// ----- raw source export --------------------------------------------------
+//
+// Everything below is saved as-is (after removing secrets) into export/raw/*.json so an
+// importer can map fields the open-coaching-data V1 schema has no place for: full meal
+// plans, logged workouts, metrics, habits, supplements, goals and unverified shapes.
+
+function createRawStore() {
+  return {
+    coach: null,
+    forms: [],
+    clients: [],
+    workout_plans: [],
+    meal_plans: [],
+    supplements: [],
+    check_ins: [],
+    initial_qa: [],
+    workout_logs: [],
+    metrics: [],
+    habits: [],
+    nutrition_logs: [],
+    library_exercises: [],
+    recipes: []
+  };
+}
+
+async function extractClientHistoryRaw(kx, row, clientId, detail, runLog) {
+  const id = row.id;
+  const base = { client_id: clientId, source_client_id: id };
+  const who = row.name || "this client";
+
+  progress(`Exporting body metrics for ${who}.`);
+  await kx.visit(`${CLIENT_ROUTE}/metrics`, { clientId: id });
+  const metricsAll = await kx.fetchWith(["clients", "detail", id, "metric-graphs"], { preset: "all" });
+  let metrics = { range: "all", data: metricsAll.data };
+  if (!metricsAll.applied || metricsAll.error) {
+    runLog.skipped.push({ area: "metrics_all_range", client_id: clientId, reason: metricsAll.error || "all-time range could not be requested; kept the default range" });
+    metrics = { range: "default", data: await kx.findOne(["clients", "detail", id, "metric-graphs"]) };
+  }
+  RAW.metrics.push({ ...base, ...metrics, weight: detail?.weight, weight_series: detail?.weightSeries, weight_progress: detail?.weightProgress });
+
+  progress(`Exporting logged workouts for ${who}.`);
+  await kx.visit(`${CLIENT_ROUTE}/workouts/`, { clientId: id });
+  const latest = await kx.findOne(["clients", "detail", id, "workout-logs", "latest"]);
+  const strength = await kx.findOne(["clients", "detail", id, "insights", "strength"]);
+  await kx.visit(`${CLIENT_ROUTE}/workouts/progress`, { clientId: id });
+  const progressAll = await kx.fetchWith(["clients", "detail", id, "workouts"], { range: "all" });
+  const progressData = progressAll.applied && !progressAll.error
+    ? { range: "all", data: progressAll.data }
+    : { range: "default", data: await kx.findOne(["clients", "detail", id, "workouts"]) };
+  const logDetails = [];
+  for (const log of latest?.logs || []) {
+    const logId = log?.id || log?.logId;
+    const logKind = log?.logKind || log?.kind || log?.type;
+    if (!logId || !logKind) {
+      continue;
+    }
+    const visit = await kx.visit(`${CLIENT_ROUTE}/workouts/logs/$logKind/$logId`, { clientId: id, logKind, logId });
+    logDetails.push({ log_id: logId, log_kind: logKind, queries: visit.added });
+  }
+  if ((latest?.logs || []).length && logDetails.length === 0) {
+    runLog.skipped.push({ area: "workout_log_details", client_id: clientId, reason: "logs had no id/kind to open their detail pages" });
+  }
+  RAW.workout_logs.push({ ...base, latest, strength_insights: strength, progress: progressData, log_details: logDetails });
+
+  const weekly = [
+    ["habits", `${CLIENT_ROUTE}/habits`, "habits", "daily habits"],
+    ["nutrition_logs", `${CLIENT_ROUTE}/nutrition/`, "nutrition-logs", "food logs"]
+  ];
+  for (const [area, route, key, label] of weekly) {
+    progress(`Exporting ${label} for ${who}.`);
+    await kx.visit(route, { clientId: id });
+    const anchor = await kx.findOne(["clients", "detail", id, key, "default-week-start"]);
+    const weeks = weekStartsBack(anchor, detail?.summary?.clientStartDate || detail?.summary?.clientSince || row.clientSince, HISTORY_WEEKS);
+    const collected = [];
+    for (const weekStart of weeks) {
+      const result = await kx.fetchWith(["clients", "detail", id, key, { $ne: "default-week-start" }], { weekStart });
+      if (!result.applied) {
+        runLog.skipped.push({ area, client_id: clientId, reason: result.error || "week could not be requested" });
+        break;
+      }
+      if (result.error) {
+        runLog.skipped.push({ area, client_id: clientId, week_start: weekStart, reason: result.error });
+        continue;
+      }
+      if (result.data !== null && result.data !== undefined) {
+        collected.push({ week_start: weekStart, data: result.data });
+      }
+    }
+    RAW[area].push({ ...base, weeks_requested: weeks.length, weeks: collected });
+  }
+}
+
+// Week starts (YYYY-MM-DD) from the app's current week back to the client's start date,
+// capped at maxWeeks.
+function weekStartsBack(anchor, startValue, maxWeeks) {
+  const anchorDate = /^\d{4}-\d{2}-\d{2}$/.test(String(anchor || "")) ? new Date(`${anchor}T00:00:00Z`) : null;
+  if (!anchorDate || Number.isNaN(anchorDate.getTime())) {
+    return [];
+  }
+  const weekMs = 7 * 24 * 3600 * 1000;
+  const start = startValue ? new Date(startValue) : null;
+  const weeks = [];
+  for (let i = 0; i < maxWeeks; i += 1) {
+    const week = new Date(anchorDate.getTime() - i * weekMs);
+    if (start && !Number.isNaN(start.getTime()) && week.getTime() + weekMs <= start.getTime()) {
+      break;
+    }
+    weeks.push(week.toISOString().slice(0, 10));
+  }
+  return weeks;
+}
+
+async function extractLibraryRaw(kx, runLog) {
+  progress("Exporting your custom exercises.");
+  await kx.visit("/coach/builder/workouts/", {}, { mode: "exercises", page: 1, pageSize: LIST_PAGE_SIZE, segment: "live", sort: "updated_desc" });
+  const exercises = await kx.fetchAll(["workouts", "list", { mode: "exercises" }]);
+  RAW.library_exercises = exercises.rows;
+  runLog.pagination.library_exercises = exercises.pages;
+
+  progress("Exporting your recipes.");
+  await kx.visit("/coach/builder/nutrition/recipes");
+  RAW.recipes = await kx.find(["nutrition", "recipes"]);
+}
+
+const SECRET_KEY = /token|secret|api_?key|password|cookie|authorization|session/i;
+
+// Drops secret-looking keys and strips query strings from URLs (signed media links carry
+// credentials in the query string and expire anyway).
+function sanitizeRaw(value) {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeRaw);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value)
+      .filter(([key]) => !SECRET_KEY.test(key))
+      .map(([key, child]) => [key, sanitizeRaw(child)]));
+  }
+  if (typeof value === "string" && /^https?:\/\//i.test(value)) {
+    try {
+      const url = new URL(value);
+      url.search = "";
+      url.hash = "";
+      return url.toString();
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+const RAW_README = [
+  "# Raw Kahunas data",
+  "",
+  "These files hold the data exactly as the Kahunas web app returned it, so nothing is lost when the main coaching data file has no place for it.",
+  "",
+  "- `clients.json`: roster row and full client profile (goal, package, weight, check-in schedule)",
+  "- `workout-plans.json`, `meal-plans.json`, `supplements.json`: full assigned plans per client",
+  "- `check-ins.json`, `initial-qa.json`: check-in history and answers, intake answers",
+  "- `workout-logs.json`: recent logged workouts, strength insights, progress",
+  "- `metrics.json`: body metrics and weight history",
+  "- `habits.json`, `nutrition-logs.json`: week-by-week habit and food logs",
+  "- `forms.json`, `library-exercises.json`, `recipes.json`: the coach's own forms, exercises and recipes",
+  "- `coach.json`: coach account and general settings",
+  "",
+  "Passwords, tokens and other secrets are not included. Photos and videos are not downloaded.",
+  ""
+].join("\n");
+
+function writeRawFiles(exportDir) {
+  if (!RAW.coach) {
+    return [];
+  }
+  const rawDir = join(exportDir, "raw");
+  ensureDir(rawDir);
+  const written = [];
+  for (const [area, records] of Object.entries(RAW)) {
+    const fileName = `${area.replace(/_/g, "-")}.json`;
+    writeJson(join(rawDir, fileName), {
+      source: "kahunas.app",
+      area,
+      exported_at: new Date().toISOString(),
+      note: "Source data as returned by the Kahunas web app, with secret-looking fields and URL query strings removed. Field names are Kahunas', not the open-coaching-data schema.",
+      records: sanitizeRaw(records)
+    });
+    written.push(fileName);
+  }
+  writeFileSync(join(rawDir, "README.md"), RAW_README);
+  return written;
 }
 
 // ----- shared helpers -----------------------------------------------------
@@ -1072,6 +1284,10 @@ writeJson(summaryPath, {
   data_file: relativeForJson(dataPath),
   warnings: pkg.manifest.warnings || []
 });
+const rawFiles = writeRawFiles(exportDir);
+if (rawFiles.length) {
+  progress(`Saved ${rawFiles.length} raw data files next to the coaching data file.`);
+}
 createZip(exportDir, zipPath);
 
 let openedDataFile = false;

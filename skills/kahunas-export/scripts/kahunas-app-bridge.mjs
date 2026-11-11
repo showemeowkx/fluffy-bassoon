@@ -18,7 +18,8 @@
 // it must stay self-contained (no imports, no closure over module scope).
 
 export function installKahunasBridge() {
-  if (window.__kx && window.__kx.version === 1) {
+  const VERSION = 3;
+  if (window.__kx && window.__kx.version === VERSION) {
     return true;
   }
 
@@ -26,47 +27,62 @@ export function installKahunasBridge() {
   const router = () => window.__TSR_ROUTER__;
   const queryClient = () => router()?.options?.context?.queryClient;
 
+  // Rewrites fields inside a seroval-encoded server-function payload. Objects are encoded
+  // as {t:10, p:{k:[keys], v:[values]}}; numbers as {t:0,s:n}; strings as {t:1,s:"..."}.
+  // Only objects that contain every overridden key are touched.
   const rewritePayload = (text, override) => {
     let parsed;
     try {
       parsed = JSON.parse(text);
     } catch {
-      return text;
+      return { text, applied: false };
     }
+    const keys = Object.keys(override);
+    let applied = false;
     const walk = (node) => {
       if (!node || typeof node !== "object") {
         return;
       }
-      if (node.p && Array.isArray(node.p.k) && Array.isArray(node.p.v) && node.p.k.includes("pageSize")) {
+      if (node.p && Array.isArray(node.p.k) && Array.isArray(node.p.v) && keys.every((key) => node.p.k.includes(key))) {
         for (const [key, value] of Object.entries(override)) {
-          const index = node.p.k.indexOf(key);
-          if (index >= 0) {
-            node.p.v[index] = { t: 0, s: value };
-          }
+          node.p.v[node.p.k.indexOf(key)] = typeof value === "number" ? { t: 0, s: value } : { t: 1, s: String(value) };
         }
+        applied = true;
       }
       for (const child of Object.values(node)) {
         walk(child);
       }
     };
     walk(parsed);
-    return JSON.stringify(parsed);
+    return { text: JSON.stringify(parsed), applied };
   };
 
+  // The fetch wrapper is installed once per page, but always delegates to the latest
+  // rewrite function so a newer bridge version takes effect without a reload.
+  window.__kxRewrite = rewritePayload;
   if (!window.__kxOriginalFetch) {
     window.__kxOriginalFetch = window.fetch;
     window.fetch = function patchedFetch(input, init) {
+      const rewritePayload = window.__kxRewrite;
       const override = window.__kxOverride;
       if (override) {
         const rawUrl = typeof input === "string" ? input : input instanceof URL ? input.href : null;
         if (rawUrl && rawUrl.includes("/_serverFn/")) {
           const url = new URL(rawUrl, location.href);
           const payload = url.searchParams.get("payload");
-          if (payload && payload.includes("pageSize")) {
-            url.searchParams.set("payload", rewritePayload(payload, override));
-            input = url.pathname + url.search;
-          } else if (init && typeof init.body === "string" && init.body.includes("pageSize")) {
-            init = { ...init, body: rewritePayload(init.body, override) };
+          if (payload) {
+            const result = rewritePayload(payload, override);
+            if (result.applied) {
+              url.searchParams.set("payload", result.text);
+              input = url.pathname + url.search;
+              window.__kxOverrideHits += 1;
+            }
+          } else if (init && typeof init.body === "string") {
+            const result = rewritePayload(init.body, override);
+            if (result.applied) {
+              init = { ...init, body: result.text };
+              window.__kxOverrideHits += 1;
+            }
           }
         }
       }
@@ -83,6 +99,9 @@ export function installKahunasBridge() {
         return true;
       }
       const actual = key[index];
+      if (typeof expected === "object" && "$ne" in expected) {
+        return actual !== expected.$ne;
+      }
       if (typeof expected === "object") {
         return actual && typeof actual === "object" && Object.entries(expected).every(([k, v]) => actual[k] === v);
       }
@@ -110,7 +129,7 @@ export function installKahunasBridge() {
   const allQueries = () => queryClient().getQueryCache().getAll();
 
   window.__kx = {
-    version: 1,
+    version: VERSION,
 
     ready() {
       return Boolean(router() && queryClient());
@@ -140,13 +159,16 @@ export function installKahunasBridge() {
         .map((query) => ({ key: query.queryKey, data: query.state.data })));
     },
 
-    async fetchPage(pattern, page, pageSize) {
+    // Re-runs a cached query's queryFn with fields of its server-function payload replaced.
+    // Returns { data, applied } where applied tells whether the override hit the payload.
+    async fetchWith(pattern, override) {
       const query = allQueries().find((candidate) => matchKey(candidate.queryKey, pattern) && candidate.options?.queryFn);
       if (!query) {
-        return null;
+        return { data: null, applied: false, error: "query not in cache" };
       }
       await settle(5000);
-      window.__kxOverride = { page, pageSize };
+      window.__kxOverrideHits = 0;
+      window.__kxOverride = override;
       try {
         const data = await query.options.queryFn({
           queryKey: query.queryKey,
@@ -154,10 +176,17 @@ export function installKahunasBridge() {
           meta: query.meta,
           client: queryClient()
         });
-        return plain(data);
+        return plain({ data, applied: window.__kxOverrideHits > 0 });
+      } catch (error) {
+        return { data: null, applied: window.__kxOverrideHits > 0, error: String(error?.message || error) };
       } finally {
         window.__kxOverride = null;
       }
+    },
+
+    async fetchPage(pattern, page, pageSize) {
+      const result = await this.fetchWith(pattern, { page, pageSize });
+      return result.data;
     },
 
     // Walks every page of a cached paginated query ({ page, pageCount, rows, totalRows }).

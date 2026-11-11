@@ -39,6 +39,26 @@ The seroval payload of a paginated query looks like:
 
 You can list all route ids with `Object.keys(window.__TSR_ROUTER__.routesById)`.
 
+## Raw output (export/raw/)
+
+Next to the V1 package the exporter writes one JSON file per area with the app's own data, so importers can map fields V1 has no place for. Secret-looking keys (token, secret, api key, password, cookie, authorization, session) are dropped and URL query strings are stripped.
+
+| File | Source |
+|---|---|
+| `clients.json` | roster row + `["clients","detail",id,"deleted-inclusive"]` (goal, package, weight, schedule) + assigned forms |
+| `workout-plans.json`, `meal-plans.json`, `supplements.json` | `["clients","detail",id,"workout-plans"|"meal-plan"|"supplements","active"]` |
+| `check-ins.json` | all check-in history rows + every query loaded on each check-in detail page |
+| `initial-qa.json` | `["clients","detail",id,"initial-qa","submissions"]` |
+| `workout-logs.json` | `workout-logs/latest` (no paging; recent logs only), `insights/strength`, `workouts/progress` with `range: "all"`, and the detail page of every listed log |
+| `metrics.json` | `metric-graphs` with `preset: "all"`, plus weight series from the client summary |
+| `habits.json`, `nutrition-logs.json` | weekly queries (`weekStart` rewritten), from the current week back to the client's start date, capped by `--history-weeks` (default 104) |
+| `forms.json`, `library-exercises.json`, `recipes.json` | builder lists and form details |
+| `coach.json` | coach user and `settings.general` |
+
+Payload overrides are generic: `fetchWith(pattern, { field: value })` rewrites every payload object that contains all given fields. The run log records under `skipped` when an override could not be applied, and what was kept instead.
+
+Coach notes: the client header "Notes" panel did not load anything into the query cache on an account without notes, so notes are not exported yet.
+
 ## Not verified yet
 
 The pilot account had no submitted check-ins or initial Q&A answers. As a result:
