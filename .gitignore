@@ -1,2 +1,3 @@
 runs/
 .playwright-browsers/
+node_modules/

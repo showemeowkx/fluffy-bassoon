@@ -54,19 +54,42 @@ Next to the V1 package the exporter writes one JSON file per area with the app's
 | `habits.json`, `nutrition-logs.json` | weekly queries (`weekStart` rewritten), from the current week back to the client's start date, capped by `--history-weeks` (default 104) |
 | `forms.json`, `library-exercises.json`, `recipes.json` | builder lists and form details |
 | `coach.json` | coach user and `settings.general` |
+| `library-programs.json` | `["workouts","list",{mode:"programs"}]` (paginated) + `["workouts","plans",id,null,null,"full"]` from `/coach/builder/workouts/plans/$planId` |
+| `library-meal-plans.json` | `["nutrition","plans","list",...]` (paginated) + every query loaded on `/coach/builder/nutrition/plans/$planId` |
+| `custom-foods.json`, `library-meals.json`, `library-days.json`, `library-supplement-plans.json` | nutrition builder tabs (`/coach/builder/nutrition/` with search `tab: "food" | "meals" | "days" | "supplements"`), keys `["nutrition","foods"|"meal-templates"|"day-templates"|"supplements","list",...]`. Each list loads only once its tab is open; all paginated. |
+| `progress-photos.json` | `["clients","detail",id,"gallery","images","newest"]`, an infinite query of photo groups. Page rewriting does not apply to it yet, so only the first loaded page is kept (logged under `skipped`). Photos are not downloaded. |
+| `labs-and-cycle.json` | every query loaded on the client's `labs/` and `cycle` pages |
+| `content.json` | every query loaded on `/coach/content/docs/` (including legal documents), `/coach/content/library` and `/coach/builder/education/` |
 
 Payload overrides are generic: `fetchWith(pattern, { field: value })` rewrites every payload object that contains all given fields. The run log records under `skipped` when an override could not be applied, and what was kept instead.
 
-Coach notes: the client header "Notes" panel did not load anything into the query cache on an account without notes, so notes are not exported yet.
+Coach notes arrive with the client summary: `["clients","detail",id,"deleted-inclusive"].notes[]` with `{ id, body, createdAt, updatedAt, source }`. Opening the "Notes" panel fetches nothing, so they are exported through `raw/clients.json` (`detail.notes`).
 
-## Not verified yet
+Client groups: this Kahunas version has no separate client-group feature (no routes, query keys or fields for it). Grouping exists only as communities (`/coach/people/community`), challenges (`/coach/people/challenges`) and group chat, which are out of scope.
 
-The pilot account had no submitted check-ins or initial Q&A answers. As a result:
+## Photo copies
 
-- check-in row field names (`id`, `submittedAt`/`occurredAt`, `formId`/`formTitle`) are handled defensively, and
-- answers are found by searching the detail data for lists of `{label|question|prompt, value|answer|response}`.
+Gallery image URLs are S3 links signed for 15 minutes (`X-Amz-Expires: 900`); without the signature S3 returns 403. Photos are therefore copied during the export by a configurable sink (`scripts/photo-sinks.mjs`):
 
-Prescription fields (`sets`, `reps`, `rpe`, `rir`, `restSeconds`, `tempo`, set arrays) are handled the same defensive way. Before trusting those counts on an account that has this data, check them against what the coach sees in Kahunas.
+| Setting | Flag | Environment |
+|---|---|---|
+| Destination: `local` or `s3://bucket/prefix` | `--photos-to` | `AC_KAHUNAS_PHOTOS_TO` |
+| S3 region | `--s3-region` | `AC_KAHUNAS_S3_REGION`, `AWS_REGION` |
+| AWS profile | `--s3-profile` | `AC_KAHUNAS_S3_PROFILE`, `AWS_PROFILE` |
+| S3-compatible endpoint (path-style) | `--s3-endpoint` | `AC_KAHUNAS_S3_ENDPOINT` |
+
+Credentials come from the standard AWS chain (environment, shared config/SSO profile, instance role). Object key: `<prefix>/<workspace>/client_<id>/photo_<assetId>.<ext>`, with metadata `kahunas-asset-id`, `kahunas-client-id`, `kahunas-check-in-id`, `kahunas-recorded-at`. Existing objects are skipped (HEAD first), so reruns resume. `raw/progress-photos.json` records `photo_files[assetId] = { location, size, content_type, check_in_id, recorded_at }`. Switching to another bucket (for example MSB's) is only a config change; a different upload mechanism (for example presigned URLs from an MSB endpoint) is a new sink implementing `exists`, `put`, `location` and `describe`.
+
+## Verified shapes (from a live account, November 2026)
+
+- Check-in history row: `{ id, checkInNumber, displayNumber, occurredAt, submittedAt, recordedAt, clientTimeZone, status, formId, formTitle, photoCount, metrics, note }`.
+- Check-in answers: the detail page loads `["clients","detail",id,"check-in-comparison",checkInId,"default"]` whose `comparison.rows[]` are `{ key, label, type, isMetric, selected, selectedMedia[{assetId,filename,kind,url}], comparison }`. `selected` is the answer; photo questions carry files in `selectedMedia`.
+- Initial Q&A submission: `{ id, submittedAt, images, fields[{ key, label, type, value }] }`. It has no form id; the exporter matches the form template by question keys.
+- Logged workout list (`workout-logs/latest`): `logs[{ id, kind, title, programTitle, occurredAt, durationSeconds, indicators }]`, plus `personalBests` and `rhythm`. Log detail `["clients","detail",id,"workout-logs","<kind>:<logId>"]`: `detail.blocks[].items[]{ exerciseKey, exerciseName, prescription, notes, sets[{ position, reps, load:{amount,unit}, rir, rpe, tempo, logged }] }` and `exerciseHistories`.
+- Habits week: `{ weekStart, form{id,title}, days[7], habits[{ key, label, field{key,label,type,options}, cells[7]{kind,value}, summary }] }`.
+- Gallery page: `groups[{ id, kind, checkInId, checkInNumber, recordedAt, weight, images[{ id, assetId, url, filename, mimeType, size }] }]`. Its payload has `page` but no `pageSize`, so only `page` is rewritten. Image URLs point to S3 and need a fresh signed URL to download; the raw export strips query strings.
+
+- Plan exercise prescription: `{ sets, reps, load, durationSeconds }`, for example `{"sets":4,"reps":10,"load":"40"}` or `{"durationSeconds":120}`. `load` is a bare string or number with no unit; the exporter uses the coach's weight unit from settings. Block type example: `straight_sets`.
 
 ## Live extractor rules
 

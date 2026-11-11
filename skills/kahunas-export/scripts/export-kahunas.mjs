@@ -19,11 +19,12 @@ import {
   zipFileName
 } from "./lib.mjs";
 import { installKahunasBridge } from "./kahunas-app-bridge.mjs";
+import { createPhotoSink } from "./photo-sinks.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 
 if (args.help) {
-  console.log(`Usage: node skills/kahunas-export/scripts/export-kahunas.mjs [--run-dir DIR] [--fixture FILE] [--cdp-url URL]\n\nCreates a local Kahunas coaching data export package.\n\nOptions:\n  --run-dir DIR  Run folder. Defaults to ~/KahunasExports/kahunas/runs/<timestamp>.\n  --fixture FILE Use an existing standard package JSON as input for local testing.\n  --cdp-url URL  Connect to a local browser launched by start-browser.mjs.\n  --history-weeks N  Weeks of habit and food logs to export per client. Defaults to 104.\n  --help         Show this help text.\n`);
+  console.log(`Usage: node skills/kahunas-export/scripts/export-kahunas.mjs [--run-dir DIR] [--fixture FILE] [--cdp-url URL]\n\nCreates a local Kahunas coaching data export package.\n\nOptions:\n  --run-dir DIR  Run folder. Defaults to ~/KahunasExports/kahunas/runs/<timestamp>.\n  --fixture FILE Use an existing standard package JSON as input for local testing.\n  --cdp-url URL  Connect to a local browser launched by start-browser.mjs.\n  --history-weeks N  Weeks of habit and food logs to export per client. Defaults to 104.\n  --photos-to DEST   Copy progress photos while their links are fresh (they expire after 15 minutes).\n                     DEST is "local" (inside the export folder) or "s3://bucket/prefix".\n                     Also settable with AC_KAHUNAS_PHOTOS_TO. --download-photos is the same as --photos-to local.\n  --s3-region R      S3 region (or AC_KAHUNAS_S3_REGION / AWS_REGION).\n  --s3-profile P     AWS profile for S3 (or AC_KAHUNAS_S3_PROFILE / AWS_PROFILE).\n  --s3-endpoint URL  S3-compatible endpoint, path-style (or AC_KAHUNAS_S3_ENDPOINT).\n  --help         Show this help text.\n`);
   process.exit(0);
 }
 
@@ -95,6 +96,13 @@ const CLIENT_ROUTE = "/coach/people/clients/$clientId";
 const LIST_PAGE_SIZE = 100;
 const HISTORY_WEEKS = Math.max(1, Number(args["history-weeks"]) || 104);
 const RAW = createRawStore();
+// Kahunas photo links are S3 URLs signed for 15 minutes, so a stored link is useless
+// later. With --download-photos the files are saved during the export instead.
+let PHOTO_SINK = null;
+let WORKSPACE_SLUG = "workspace";
+const PHOTO_CONCURRENCY = 4;
+// Kahunas prescriptions carry the load as a bare number; the unit is the coach's weight unit.
+let DEFAULT_LOAD_UNIT = "kg";
 
 async function packageFromLiveBrowser() {
   if (!args["cdp-url"]) {
@@ -117,6 +125,7 @@ async function packageFromLiveBrowser() {
     await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
     await page.waitForFunction(() => window.__TSR_ROUTER__?.options?.context?.queryClient, null, { timeout: 30000 });
 
+    WORKSPACE_SLUG = sourceId("workspace", String(loginState.host || "").split(".")[0]).replace(/^workspace_/, "") || "workspace";
     const kx = createBridge(page);
     const runLog = {
       mode: "live",
@@ -212,6 +221,11 @@ async function getKahunasLoginState(page) {
 }
 
 async function extractLivePackage(kx, runLog) {
+  PHOTO_SINK = await createPhotoSink(args, exportDir);
+  if (PHOTO_SINK) {
+    progress(`Progress photos will be copied to ${PHOTO_SINK.describe()}.`);
+    runLog.photo_destination = PHOTO_SINK.kind;
+  }
   progress("Exporting coach profile.");
   await kx.visit("/coach/settings");
   const routeContext = await kx.findOne(["coach-route-context", "context"]);
@@ -219,6 +233,7 @@ async function extractLivePackage(kx, runLog) {
   const profile = mapCoachProfile(routeContext);
   progress("Exporting coach settings.");
   const settings = mapCoachSettings(settingsDetail, routeContext);
+  DEFAULT_LOAD_UNIT = settings.units?.weight || DEFAULT_LOAD_UNIT;
   RAW.coach = {
     user: routeContext?.user,
     display_time_zone: routeContext?.displayTimeZone,
@@ -597,7 +612,7 @@ function createReconstructedTemplates() {
   };
 }
 
-function resolveTemplate(source, fallbackType, formTemplateBySourceId, reconstructed) {
+function resolveTemplate(source, fallbackType, formTemplateBySourceId, reconstructed, rawAnswers = []) {
   const formSourceId = source?.formId || source?.form?.id || source?.formTemplateId;
   if (formSourceId && formTemplateBySourceId.has(formSourceId)) {
     return formTemplateBySourceId.get(formSourceId);
@@ -607,6 +622,22 @@ function resolveTemplate(source, fallbackType, formTemplateBySourceId, reconstru
     const byTitle = [...formTemplateBySourceId.values()].find((template) => normalizeNameKey(template.name) === title);
     if (byTitle) {
       return byTitle;
+    }
+  }
+  const answerKeys = rawAnswers.map((answer) => answer.key).filter(Boolean);
+  if (answerKeys.length) {
+    let best;
+    let bestScore = 0;
+    for (const template of formTemplateBySourceId.values()) {
+      const score = answerKeys.filter((key) => template.__fieldsByKey.has(key)).length;
+      const preferType = template.form_type === fallbackType ? 0.5 : 0;
+      if (score > 0 && score + preferType > bestScore) {
+        best = template;
+        bestScore = score + preferType;
+      }
+    }
+    if (best) {
+      return best;
     }
   }
   return reconstructed.get(fallbackType);
@@ -640,7 +671,7 @@ function buildAnswers(rawAnswers, template) {
 // Finds the most likely list of question/answer pairs anywhere inside `data`.
 function findAnswerList(data) {
   const questionKeys = ["label", "question", "questionLabel", "questionText", "prompt", "fieldLabel", "title"];
-  const answerKeys = ["value", "answer", "response", "displayValue", "answerText", "formattedValue", "values", "text"];
+  const answerKeys = ["value", "answer", "response", "selected", "displayValue", "answerText", "formattedValue", "values", "text"];
   let best = [];
   const seen = new Set();
   const walk = (node, depth) => {
@@ -711,7 +742,7 @@ async function extractIntakeSubmissions(kx, clientSourceId, clientId, formTempla
       runLog.skipped.push({ area: "intake_submission", client_id: clientId, reason: "no question/answer pairs found" });
       continue;
     }
-    const template = resolveTemplate(submission, "intake", formTemplateBySourceId, reconstructed);
+    const template = resolveTemplate(submission, "intake", formTemplateBySourceId, reconstructed, rawAnswers);
     submissions.push({
       id: sourceId("submission", submission.id || `${clientSourceId}_intake_${submissions.length + 1}`),
       client_id: clientId,
@@ -766,13 +797,16 @@ async function extractClientCheckIns(kx, row, clientId, formTemplateBySourceId, 
       ...(await kx.find(["clients", "detail", row.id])).filter((entry) => JSON.stringify(entry.key).includes(checkInSourceId)).map((entry) => entry.data)
     ];
     rawCheckIns.details.push({ check_in_source_id: checkInSourceId, queries: visit.added });
-    let rawAnswers = findAnswerList(related);
+    let rawAnswers = checkInComparisonAnswers(related);
+    if (!rawAnswers.length) {
+      rawAnswers = findAnswerList(related);
+    }
     if (!rawAnswers.length) {
       rawAnswers = findAnswerList(checkInRow);
     }
     let submission;
     if (rawAnswers.length) {
-      const template = resolveTemplate(checkInRow, "check_in", formTemplateBySourceId, reconstructed);
+      const template = resolveTemplate(checkInRow, "check_in", formTemplateBySourceId, reconstructed, rawAnswers);
       submission = {
         id: sourceId("submission", checkInSourceId),
         client_id: clientId,
@@ -787,6 +821,28 @@ async function extractClientCheckIns(kx, row, clientId, formTemplateBySourceId, 
     results.push({ checkIn, submission });
   }
   return results;
+}
+
+// Reads answers from the check-in detail's comparison rows. Photo questions carry their
+// files in selectedMedia; the answer records file names only (photos are not downloaded).
+function checkInComparisonAnswers(related) {
+  for (const data of related) {
+    const rows = data?.comparison?.rows;
+    if (!Array.isArray(rows) || !rows.length) {
+      continue;
+    }
+    return rows
+      .map((row) => {
+        let value = normalizeAnswer(row.selected);
+        const media = Array.isArray(row.selectedMedia) ? row.selectedMedia : [];
+        if ((value === null || value === undefined || value === "") && media.length) {
+          value = media.map((item) => item.filename || item.assetId || item.kind || "photo").join(", ");
+        }
+        return { key: row.key, label: row.label || row.key, value };
+      })
+      .filter((answer) => answer.label && answer.value !== null && answer.value !== undefined && answer.value !== "");
+  }
+  return [];
 }
 
 function checkInDate(row) {
@@ -884,7 +940,9 @@ function mapPrescription(raw) {
   const rpe = num(raw.rpe ?? first.rpe);
   const restSeconds = num(raw.restSeconds ?? raw.restSec ?? first.restSeconds);
   const durationSeconds = num(raw.durationSeconds ?? raw.timeSeconds ?? first.durationSeconds);
-  const load = num(raw.weight ?? raw.load ?? first.weight ?? first.load);
+  const loadSource = raw.load ?? first.load ?? raw.weight ?? first.weight;
+  const load = loadSource && typeof loadSource === "object" ? num(loadSource.amount ?? loadSource.value) : num(loadSource);
+  const loadUnit = loadSource && typeof loadSource === "object" ? loadSource.unit : undefined;
   return compactObject({
     sets: setList ? setList.length : num(raw.sets ?? raw.setCount),
     reps: reps !== undefined && reps !== null && reps !== "" ? String(reps) : undefined,
@@ -893,7 +951,7 @@ function mapPrescription(raw) {
     tempo: typeof raw.tempo === "string" && raw.tempo ? raw.tempo : undefined,
     rest: restSeconds !== undefined ? { value: restSeconds, unit: "seconds" } : typeof raw.rest === "number" ? { value: raw.rest, unit: "seconds" } : parseDuration(raw.rest),
     duration: durationSeconds !== undefined ? { value: durationSeconds, unit: "seconds" } : undefined,
-    load: load !== undefined ? { value: load, unit: String(raw.weightUnit || raw.loadUnit || first.weightUnit || "kg") } : undefined
+    load: load !== undefined ? { value: load, unit: String(loadUnit || raw.weightUnit || raw.loadUnit || first.weightUnit || DEFAULT_LOAD_UNIT) } : undefined
   });
 }
 
@@ -949,7 +1007,16 @@ function createRawStore() {
     habits: [],
     nutrition_logs: [],
     library_exercises: [],
-    recipes: []
+    library_programs: [],
+    library_meal_plans: [],
+    custom_foods: [],
+    library_meals: [],
+    library_days: [],
+    library_supplement_plans: [],
+    recipes: [],
+    progress_photos: [],
+    labs_and_cycle: [],
+    content: []
   };
 }
 
@@ -992,6 +1059,36 @@ async function extractClientHistoryRaw(kx, row, clientId, detail, runLog) {
   }
   RAW.workout_logs.push({ ...base, latest, strength_insights: strength, progress: progressData, log_details: logDetails });
 
+  progress(`Exporting progress photo list for ${who}.`);
+  await kx.visit(`${CLIENT_ROUTE}/gallery`, { clientId: id });
+  const galleryPattern = ["clients", "detail", id, "gallery", "images"];
+  const galleryPages = [];
+  const galleryCached = await kx.find(galleryPattern);
+  if (galleryCached.length) {
+    for (let page = 1; page <= 500; page += 1) {
+      const result = await kx.fetchWith(galleryPattern, { page });
+      if (!result.applied || result.error) {
+        if (page === 1) {
+          galleryPages.push(...galleryCached.map((entry) => entry.data));
+          runLog.skipped.push({ area: "progress_photos", client_id: clientId, reason: result.error || "gallery pages could not be requested; kept the first loaded page" });
+        }
+        break;
+      }
+      galleryPages.push(result.data);
+      if (!result.data || !(result.data.groups || []).length || page >= (result.data.pageCount || 1)) {
+        break;
+      }
+    }
+  }
+  runLog.pagination[`progress_photos_${clientId}`] = galleryPages.map((page) => ({ page: page?.page, pageCount: page?.pageCount, totalImages: page?.totalImages, groups: (page?.groups || []).length }));
+  const photoFiles = PHOTO_SINK ? await copyPhotos(galleryPages, id, runLog) : undefined;
+  RAW.progress_photos.push({ ...base, pages: galleryPages, photo_files: photoFiles });
+
+  for (const [area, route] of [["labs", `${CLIENT_ROUTE}/labs/`], ["cycle", `${CLIENT_ROUTE}/cycle`]]) {
+    const visit = await kx.visit(route, { clientId: id });
+    RAW.labs_and_cycle.push({ ...base, area, queries: visit.added });
+  }
+
   const weekly = [
     ["habits", `${CLIENT_ROUTE}/habits`, "habits", "daily habits"],
     ["nutrition_logs", `${CLIENT_ROUTE}/nutrition/`, "nutrition-logs", "food logs"]
@@ -1022,6 +1119,67 @@ async function extractClientHistoryRaw(kx, row, clientId, detail, runLog) {
 
 // Week starts (YYYY-MM-DD) from the app's current week back to the client's start date,
 // capped at maxWeeks.
+// Copies every image in the gallery pages to the photo sink right away, while the signed
+// Kahunas URLs are fresh. Already-copied photos are skipped, so reruns resume.
+// Returns { assetId: { location, size, content_type, check_in_id } }.
+async function copyPhotos(galleryPages, clientSourceId, runLog) {
+  const files = {};
+  const items = [];
+  for (const page of galleryPages) {
+    for (const group of page?.groups || []) {
+      for (const image of group.images || []) {
+        const assetId = image.assetId || image.id;
+        if (image.url && assetId && !items.some((item) => item.assetId === assetId)) {
+          items.push({ image, group, assetId });
+        }
+      }
+    }
+  }
+  if (!items.length) {
+    return files;
+  }
+  progress(`Copying ${items.length} progress photo(s) to ${PHOTO_SINK.describe()}.`);
+  const clientId = sourceId("client", clientSourceId);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const { image, group, assetId } = items[next];
+      next += 1;
+      const extension = (String(image.filename || "").match(/\.([a-z0-9]{2,5})$/i)?.[1] || String(image.mimeType || "").split("/")[1] || "jpg").toLowerCase();
+      const key = `${WORKSPACE_SLUG}/${clientId}/${sourceId("photo", assetId)}.${extension}`;
+      try {
+        if (!(await PHOTO_SINK.exists(key))) {
+          const response = await fetch(image.url);
+          if (!response.ok) {
+            throw new Error(`download failed: HTTP ${response.status}`);
+          }
+          const body = Buffer.from(await response.arrayBuffer());
+          await PHOTO_SINK.put(key, body, {
+            contentType: image.mimeType || response.headers.get("content-type") || undefined,
+            metadata: {
+              "kahunas-asset-id": assetId,
+              "kahunas-client-id": clientSourceId,
+              "kahunas-check-in-id": group.checkInId,
+              "kahunas-recorded-at": group.recordedAt
+            }
+          });
+        }
+        files[assetId] = compactObject({
+          location: PHOTO_SINK.location(key),
+          size: image.size,
+          content_type: image.mimeType,
+          check_in_id: group.checkInId ? sourceId("checkin", group.checkInId) : undefined,
+          recorded_at: group.recordedAt
+        });
+      } catch (error) {
+        runLog.skipped.push({ area: "photo_copy", client_id: clientId, asset_id: assetId, reason: String(error.message || error) });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PHOTO_CONCURRENCY, items.length) }, worker));
+  return files;
+}
+
 function weekStartsBack(anchor, startValue, maxWeeks) {
   const anchorDate = /^\d{4}-\d{2}-\d{2}$/.test(String(anchor || "")) ? new Date(`${anchor}T00:00:00Z`) : null;
   if (!anchorDate || Number.isNaN(anchorDate.getTime())) {
@@ -1046,6 +1204,49 @@ async function extractLibraryRaw(kx, runLog) {
   const exercises = await kx.fetchAll(["workouts", "list", { mode: "exercises" }]);
   RAW.library_exercises = exercises.rows;
   runLog.pagination.library_exercises = exercises.pages;
+
+  progress("Exporting your workout program library.");
+  await kx.visit("/coach/builder/workouts/", {}, { mode: "programs", page: 1, pageSize: LIST_PAGE_SIZE, segment: "live", sort: "updated_desc" });
+  const programs = await kx.fetchAll(["workouts", "list", { mode: "programs" }]);
+  runLog.pagination.library_programs = programs.pages;
+  for (const program of programs.rows) {
+    const planId = program.programId || program.id;
+    progress(`Exporting program: ${program.name || "untitled"}.`);
+    const visit = await kx.visit("/coach/builder/workouts/plans/$planId", { planId });
+    const full = (await kx.find(["workouts", "plans", planId])).find((entry) => entry.key[entry.key.length - 1] === "full");
+    RAW.library_programs.push({ source_id: planId, list_row: program, detail: full?.data, other_queries: full ? undefined : visit.added });
+  }
+
+  progress("Exporting your meal plan library.");
+  await kx.visit("/coach/builder/nutrition/", {});
+  const nutritionPlans = await kx.fetchAll(["nutrition", "plans", "list"]);
+  runLog.pagination.library_meal_plans = nutritionPlans.pages;
+  for (const plan of nutritionPlans.rows) {
+    progress(`Exporting meal plan: ${plan.title || "untitled"}.`);
+    const visit = await kx.visit("/coach/builder/nutrition/plans/$planId", { planId: plan.id });
+    RAW.library_meal_plans.push({ source_id: plan.id, list_row: plan, queries: visit.added });
+  }
+
+  // Builder tabs: the list query of each tab only loads once that tab is open.
+  const nutritionTabs = [
+    ["food", "foods", "custom_foods", "custom foods"],
+    ["meals", "meal-templates", "library_meals", "saved meals"],
+    ["days", "day-templates", "library_days", "saved days"],
+    ["supplements", "supplements", "library_supplement_plans", "supplement plans"]
+  ];
+  for (const [tab, key, area, label] of nutritionTabs) {
+    progress(`Exporting your ${label}.`);
+    await kx.visit("/coach/builder/nutrition/", {}, { page: 1, pageSize: LIST_PAGE_SIZE, sort: "updated_desc", tab, segment: "all" });
+    const list = await kx.fetchAll(["nutrition", key, "list"]);
+    RAW[area] = list.rows;
+    runLog.pagination[area] = list.pages;
+  }
+
+  progress("Exporting your content library.");
+  for (const [area, route] of [["docs", "/coach/content/docs/"], ["library", "/coach/content/library"], ["education", "/coach/builder/education/"]]) {
+    const visit = await kx.visit(route, {});
+    RAW.content.push({ area, path: visit.path, queries: visit.added });
+  }
 
   progress("Exporting your recipes.");
   await kx.visit("/coach/builder/nutrition/recipes");
@@ -1090,9 +1291,13 @@ const RAW_README = [
   "- `metrics.json`: body metrics and weight history",
   "- `habits.json`, `nutrition-logs.json`: week-by-week habit and food logs",
   "- `forms.json`, `library-exercises.json`, `recipes.json`: the coach's own forms, exercises and recipes",
+  "- `library-programs.json`, `library-meal-plans.json`: every program and meal plan in the coach's library, assigned or not",
+  "- `custom-foods.json`, `library-meals.json`, `library-days.json`, `library-supplement-plans.json`: the coach's own foods, saved meals, saved days and supplement plans",
+  "- `progress-photos.json`: progress photo list per client; when photos were copied (--photos-to), `photo_files` maps each photo to its copy (media/photos/... or s3://...)",
+  "- `labs-and-cycle.json`, `content.json`: labs, cycle tracking, docs, content library and courses",
   "- `coach.json`: coach account and general settings",
   "",
-  "Passwords, tokens and other secrets are not included. Photos and videos are not downloaded.",
+  "Passwords, tokens and other secrets are not included. Photo links in these files are expired; photos are only kept when the export ran with --photos-to. Videos are not downloaded.",
   ""
 ].join("\n");
 
