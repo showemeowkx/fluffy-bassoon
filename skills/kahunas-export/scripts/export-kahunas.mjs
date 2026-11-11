@@ -19,11 +19,12 @@ import {
   zipFileName
 } from "./lib.mjs";
 import { installKahunasBridge } from "./kahunas-app-bridge.mjs";
+import { createPhotoSink } from "./photo-sinks.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 
 if (args.help) {
-  console.log(`Usage: node skills/kahunas-export/scripts/export-kahunas.mjs [--run-dir DIR] [--fixture FILE] [--cdp-url URL]\n\nCreates a local Kahunas coaching data export package.\n\nOptions:\n  --run-dir DIR  Run folder. Defaults to ~/KahunasExports/kahunas/runs/<timestamp>.\n  --fixture FILE Use an existing standard package JSON as input for local testing.\n  --cdp-url URL  Connect to a local browser launched by start-browser.mjs.\n  --history-weeks N  Weeks of habit and food logs to export per client. Defaults to 104.\n  --download-photos  Also save progress photos into the export (media/photos/). Photo links expire after 15 minutes, so this is the only way to keep them.\n  --help         Show this help text.\n`);
+  console.log(`Usage: node skills/kahunas-export/scripts/export-kahunas.mjs [--run-dir DIR] [--fixture FILE] [--cdp-url URL]\n\nCreates a local Kahunas coaching data export package.\n\nOptions:\n  --run-dir DIR  Run folder. Defaults to ~/KahunasExports/kahunas/runs/<timestamp>.\n  --fixture FILE Use an existing standard package JSON as input for local testing.\n  --cdp-url URL  Connect to a local browser launched by start-browser.mjs.\n  --history-weeks N  Weeks of habit and food logs to export per client. Defaults to 104.\n  --photos-to DEST   Copy progress photos while their links are fresh (they expire after 15 minutes).\n                     DEST is "local" (inside the export folder) or "s3://bucket/prefix".\n                     Also settable with AC_KAHUNAS_PHOTOS_TO. --download-photos is the same as --photos-to local.\n  --s3-region R      S3 region (or AC_KAHUNAS_S3_REGION / AWS_REGION).\n  --s3-profile P     AWS profile for S3 (or AC_KAHUNAS_S3_PROFILE / AWS_PROFILE).\n  --s3-endpoint URL  S3-compatible endpoint, path-style (or AC_KAHUNAS_S3_ENDPOINT).\n  --help         Show this help text.\n`);
   process.exit(0);
 }
 
@@ -97,8 +98,9 @@ const HISTORY_WEEKS = Math.max(1, Number(args["history-weeks"]) || 104);
 const RAW = createRawStore();
 // Kahunas photo links are S3 URLs signed for 15 minutes, so a stored link is useless
 // later. With --download-photos the files are saved during the export instead.
-const DOWNLOAD_PHOTOS = Boolean(args["download-photos"]);
-let EXPORT_DIR_FOR_MEDIA = null;
+let PHOTO_SINK = null;
+let WORKSPACE_SLUG = "workspace";
+const PHOTO_CONCURRENCY = 4;
 // Kahunas prescriptions carry the load as a bare number; the unit is the coach's weight unit.
 let DEFAULT_LOAD_UNIT = "kg";
 
@@ -123,6 +125,7 @@ async function packageFromLiveBrowser() {
     await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
     await page.waitForFunction(() => window.__TSR_ROUTER__?.options?.context?.queryClient, null, { timeout: 30000 });
 
+    WORKSPACE_SLUG = sourceId("workspace", String(loginState.host || "").split(".")[0]).replace(/^workspace_/, "") || "workspace";
     const kx = createBridge(page);
     const runLog = {
       mode: "live",
@@ -218,7 +221,11 @@ async function getKahunasLoginState(page) {
 }
 
 async function extractLivePackage(kx, runLog) {
-  EXPORT_DIR_FOR_MEDIA = exportDir;
+  PHOTO_SINK = await createPhotoSink(args, exportDir);
+  if (PHOTO_SINK) {
+    progress(`Progress photos will be copied to ${PHOTO_SINK.describe()}.`);
+    runLog.photo_destination = PHOTO_SINK.kind;
+  }
   progress("Exporting coach profile.");
   await kx.visit("/coach/settings");
   const routeContext = await kx.findOne(["coach-route-context", "context"]);
@@ -1074,8 +1081,8 @@ async function extractClientHistoryRaw(kx, row, clientId, detail, runLog) {
     }
   }
   runLog.pagination[`progress_photos_${clientId}`] = galleryPages.map((page) => ({ page: page?.page, pageCount: page?.pageCount, totalImages: page?.totalImages, groups: (page?.groups || []).length }));
-  const downloaded = DOWNLOAD_PHOTOS ? await downloadPhotos(galleryPages, id, runLog) : undefined;
-  RAW.progress_photos.push({ ...base, pages: galleryPages, downloaded_files: downloaded });
+  const photoFiles = PHOTO_SINK ? await copyPhotos(galleryPages, id, runLog) : undefined;
+  RAW.progress_photos.push({ ...base, pages: galleryPages, photo_files: photoFiles });
 
   for (const [area, route] of [["labs", `${CLIENT_ROUTE}/labs/`], ["cycle", `${CLIENT_ROUTE}/cycle`]]) {
     const visit = await kx.visit(route, { clientId: id });
@@ -1112,36 +1119,64 @@ async function extractClientHistoryRaw(kx, row, clientId, detail, runLog) {
 
 // Week starts (YYYY-MM-DD) from the app's current week back to the client's start date,
 // capped at maxWeeks.
-// Downloads every image in the gallery pages right away, while the signed URLs are fresh.
-// Returns { assetId: "media/photos/<client>/<file>" } paths relative to the export folder.
-async function downloadPhotos(galleryPages, clientSourceId, runLog) {
+// Copies every image in the gallery pages to the photo sink right away, while the signed
+// Kahunas URLs are fresh. Already-copied photos are skipped, so reruns resume.
+// Returns { assetId: { location, size, content_type, check_in_id } }.
+async function copyPhotos(galleryPages, clientSourceId, runLog) {
   const files = {};
-  const images = galleryPages.flatMap((page) => (page?.groups || []).flatMap((group) => group.images || []));
-  if (!images.length) {
+  const items = [];
+  for (const page of galleryPages) {
+    for (const group of page?.groups || []) {
+      for (const image of group.images || []) {
+        const assetId = image.assetId || image.id;
+        if (image.url && assetId && !items.some((item) => item.assetId === assetId)) {
+          items.push({ image, group, assetId });
+        }
+      }
+    }
+  }
+  if (!items.length) {
     return files;
   }
-  progress(`Saving ${images.length} progress photo(s) to this laptop.`);
-  const relativeDir = join("media", "photos", sourceId("client", clientSourceId));
-  const targetDir = join(EXPORT_DIR_FOR_MEDIA, relativeDir);
-  ensureDir(targetDir);
-  for (const image of images) {
-    const key = image.assetId || image.id;
-    if (!image.url || !key || files[key]) {
-      continue;
-    }
-    try {
-      const response = await fetch(image.url);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+  progress(`Copying ${items.length} progress photo(s) to ${PHOTO_SINK.describe()}.`);
+  const clientId = sourceId("client", clientSourceId);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const { image, group, assetId } = items[next];
+      next += 1;
       const extension = (String(image.filename || "").match(/\.([a-z0-9]{2,5})$/i)?.[1] || String(image.mimeType || "").split("/")[1] || "jpg").toLowerCase();
-      const fileName = `${sourceId("photo", key)}.${extension}`;
-      writeFileSync(join(targetDir, fileName), Buffer.from(await response.arrayBuffer()));
-      files[key] = `${relativeDir.replace(/\\/g, "/")}/${fileName}`;
-    } catch (error) {
-      runLog.skipped.push({ area: "photo_download", client_id: sourceId("client", clientSourceId), asset_id: key, reason: error.message });
+      const key = `${WORKSPACE_SLUG}/${clientId}/${sourceId("photo", assetId)}.${extension}`;
+      try {
+        if (!(await PHOTO_SINK.exists(key))) {
+          const response = await fetch(image.url);
+          if (!response.ok) {
+            throw new Error(`download failed: HTTP ${response.status}`);
+          }
+          const body = Buffer.from(await response.arrayBuffer());
+          await PHOTO_SINK.put(key, body, {
+            contentType: image.mimeType || response.headers.get("content-type") || undefined,
+            metadata: {
+              "kahunas-asset-id": assetId,
+              "kahunas-client-id": clientSourceId,
+              "kahunas-check-in-id": group.checkInId,
+              "kahunas-recorded-at": group.recordedAt
+            }
+          });
+        }
+        files[assetId] = compactObject({
+          location: PHOTO_SINK.location(key),
+          size: image.size,
+          content_type: image.mimeType,
+          check_in_id: group.checkInId ? sourceId("checkin", group.checkInId) : undefined,
+          recorded_at: group.recordedAt
+        });
+      } catch (error) {
+        runLog.skipped.push({ area: "photo_copy", client_id: clientId, asset_id: assetId, reason: String(error.message || error) });
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: Math.min(PHOTO_CONCURRENCY, items.length) }, worker));
   return files;
 }
 
@@ -1258,11 +1293,11 @@ const RAW_README = [
   "- `forms.json`, `library-exercises.json`, `recipes.json`: the coach's own forms, exercises and recipes",
   "- `library-programs.json`, `library-meal-plans.json`: every program and meal plan in the coach's library, assigned or not",
   "- `custom-foods.json`, `library-meals.json`, `library-days.json`, `library-supplement-plans.json`: the coach's own foods, saved meals, saved days and supplement plans",
-  "- `progress-photos.json`: progress photo list per client; with --download-photos, `downloaded_files` maps each photo to its file under media/photos/",
+  "- `progress-photos.json`: progress photo list per client; when photos were copied (--photos-to), `photo_files` maps each photo to its copy (media/photos/... or s3://...)",
   "- `labs-and-cycle.json`, `content.json`: labs, cycle tracking, docs, content library and courses",
   "- `coach.json`: coach account and general settings",
   "",
-  "Passwords, tokens and other secrets are not included. Photo links in these files are expired; photos are only kept when the export ran with --download-photos. Videos are not downloaded.",
+  "Passwords, tokens and other secrets are not included. Photo links in these files are expired; photos are only kept when the export ran with --photos-to. Videos are not downloaded.",
   ""
 ].join("\n");
 

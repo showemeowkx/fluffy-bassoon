@@ -67,6 +67,19 @@ Coach notes arrive with the client summary: `["clients","detail",id,"deleted-inc
 
 Client groups: this Kahunas version has no separate client-group feature (no routes, query keys or fields for it). Grouping exists only as communities (`/coach/people/community`), challenges (`/coach/people/challenges`) and group chat, which are out of scope.
 
+## Photo copies
+
+Gallery image URLs are S3 links signed for 15 minutes (`X-Amz-Expires: 900`); without the signature S3 returns 403. Photos are therefore copied during the export by a configurable sink (`scripts/photo-sinks.mjs`):
+
+| Setting | Flag | Environment |
+|---|---|---|
+| Destination: `local` or `s3://bucket/prefix` | `--photos-to` | `AC_KAHUNAS_PHOTOS_TO` |
+| S3 region | `--s3-region` | `AC_KAHUNAS_S3_REGION`, `AWS_REGION` |
+| AWS profile | `--s3-profile` | `AC_KAHUNAS_S3_PROFILE`, `AWS_PROFILE` |
+| S3-compatible endpoint (path-style) | `--s3-endpoint` | `AC_KAHUNAS_S3_ENDPOINT` |
+
+Credentials come from the standard AWS chain (environment, shared config/SSO profile, instance role). Object key: `<prefix>/<workspace>/client_<id>/photo_<assetId>.<ext>`, with metadata `kahunas-asset-id`, `kahunas-client-id`, `kahunas-check-in-id`, `kahunas-recorded-at`. Existing objects are skipped (HEAD first), so reruns resume. `raw/progress-photos.json` records `photo_files[assetId] = { location, size, content_type, check_in_id, recorded_at }`. Switching to another bucket (for example MSB's) is only a config change; a different upload mechanism (for example presigned URLs from an MSB endpoint) is a new sink implementing `exists`, `put`, `location` and `describe`.
+
 ## Verified shapes (from a live account, November 2026)
 
 - Check-in history row: `{ id, checkInNumber, displayNumber, occurredAt, submittedAt, recordedAt, clientTimeZone, status, formId, formTitle, photoCount, metrics, note }`.

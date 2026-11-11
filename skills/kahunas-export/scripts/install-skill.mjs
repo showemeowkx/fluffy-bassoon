@@ -94,6 +94,7 @@ try {
       "test:fixture": "node tests/run-fixture-export.mjs"
     },
     dependencies: {
+      "@aws-sdk/client-s3": "^3.1166.0",
       ajv: "^8.20.0",
       playwright: "^1.59.1"
     },
