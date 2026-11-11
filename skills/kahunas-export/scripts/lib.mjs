@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { basename, dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
 
 export function parseArgs(argv) {
   const args = {};
@@ -51,7 +52,7 @@ export function repoRootFromScript(scriptUrl) {
 
 export function defaultRunDir() {
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "").replace("T", "-");
-  return join(process.env.HOME || process.cwd(), "KahunasExports", "kahunas", "runs", stamp);
+  return join(homedir() || process.cwd(), "KahunasExports", "kahunas", "runs", stamp);
 }
 
 export function countRecords(pkg) {
@@ -78,6 +79,22 @@ export function todayString() {
 }
 
 export function createZip(sourceDir, zipPath) {
+  if (process.platform === "win32") {
+    rmSync(zipPath, { force: true });
+    const ps = spawnSync("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "Compress-Archive -Path (Join-Path $env:AC_ZIP_SRC '*') -DestinationPath $env:AC_ZIP_DEST -Force"
+    ], {
+      encoding: "utf8",
+      env: { ...process.env, AC_ZIP_SRC: resolve(sourceDir), AC_ZIP_DEST: resolve(zipPath) }
+    });
+    if (ps.status !== 0) {
+      throw new Error(`Compress-Archive failed: ${ps.stderr || ps.stdout || "unknown error"}`);
+    }
+    return;
+  }
   const zipBinary = spawnSync("which", ["zip"], { encoding: "utf8" }).stdout.trim();
   if (!zipBinary) {
     throw new Error("The `zip` command was not found. Install zip or create the archive manually from the export folder.");

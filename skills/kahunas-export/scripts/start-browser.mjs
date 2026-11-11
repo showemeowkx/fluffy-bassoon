@@ -21,11 +21,7 @@ ensureDir(profileDir);
 let context;
 try {
   const { chromium } = await import("playwright");
-  const executablePath = chromium.executablePath();
-  if (!existsSync(executablePath)) {
-    throw new Error("The browser helper was not installed correctly. Please rerun `npx --yes @assistantcoach/kahunas-exporter` and try again.");
-  }
-  context = await chromium.launchPersistentContext(profileDir, {
+  const launchOptions = {
     headless: false,
     args: [
       `--remote-debugging-port=${port}`,
@@ -35,7 +31,27 @@ try {
       "--use-mock-keychain"
     ],
     viewport: null
-  });
+  };
+  // Prefer the bundled browser; fall back to an installed Chrome or Edge (still with the
+  // isolated profile above) when the bundled download is missing, e.g. low disk space.
+  const candidates = [];
+  if (existsSync(chromium.executablePath())) {
+    candidates.push({ label: "bundled browser", options: {} });
+  }
+  candidates.push({ label: "Google Chrome", options: { channel: "chrome" } });
+  candidates.push({ label: "Microsoft Edge", options: { channel: "msedge" } });
+  const failures = [];
+  for (const candidate of candidates) {
+    try {
+      context = await chromium.launchPersistentContext(profileDir, { ...launchOptions, ...candidate.options });
+      break;
+    } catch (error) {
+      failures.push(`${candidate.label}: ${error.message.split("\n")[0]}`);
+    }
+  }
+  if (!context) {
+    throw new Error(`No browser could be started. Please rerun \`npx --yes @assistantcoach/kahunas-exporter\` and try again.\n${failures.join("\n")}`);
+  }
   const page = context.pages()[0] || await context.newPage();
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
 } catch (error) {
