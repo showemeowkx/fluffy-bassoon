@@ -949,7 +949,12 @@ function createRawStore() {
     habits: [],
     nutrition_logs: [],
     library_exercises: [],
-    recipes: []
+    library_programs: [],
+    library_meal_plans: [],
+    recipes: [],
+    progress_photos: [],
+    labs_and_cycle: [],
+    content: []
   };
 }
 
@@ -991,6 +996,35 @@ async function extractClientHistoryRaw(kx, row, clientId, detail, runLog) {
     runLog.skipped.push({ area: "workout_log_details", client_id: clientId, reason: "logs had no id/kind to open their detail pages" });
   }
   RAW.workout_logs.push({ ...base, latest, strength_insights: strength, progress: progressData, log_details: logDetails });
+
+  progress(`Exporting progress photo list for ${who}.`);
+  await kx.visit(`${CLIENT_ROUTE}/gallery`, { clientId: id });
+  const galleryPattern = ["clients", "detail", id, "gallery", "images"];
+  const galleryPages = [];
+  const galleryCached = await kx.find(galleryPattern);
+  if (galleryCached.length) {
+    for (let page = 1; page <= 500; page += 1) {
+      const result = await kx.fetchWith(galleryPattern, { page, pageSize: LIST_PAGE_SIZE });
+      if (!result.applied || result.error) {
+        if (page === 1) {
+          galleryPages.push(...galleryCached.map((entry) => entry.data));
+          runLog.skipped.push({ area: "progress_photos", client_id: clientId, reason: result.error || "gallery pages could not be requested; kept the first loaded page" });
+        }
+        break;
+      }
+      galleryPages.push(result.data);
+      if (!result.data || !(result.data.groups || []).length || page >= (result.data.pageCount || 1)) {
+        break;
+      }
+    }
+  }
+  runLog.pagination[`progress_photos_${clientId}`] = galleryPages.map((page) => ({ page: page?.page, pageCount: page?.pageCount, totalImages: page?.totalImages, groups: (page?.groups || []).length }));
+  RAW.progress_photos.push({ ...base, pages: galleryPages });
+
+  for (const [area, route] of [["labs", `${CLIENT_ROUTE}/labs/`], ["cycle", `${CLIENT_ROUTE}/cycle`]]) {
+    const visit = await kx.visit(route, { clientId: id });
+    RAW.labs_and_cycle.push({ ...base, area, queries: visit.added });
+  }
 
   const weekly = [
     ["habits", `${CLIENT_ROUTE}/habits`, "habits", "daily habits"],
@@ -1047,6 +1081,34 @@ async function extractLibraryRaw(kx, runLog) {
   RAW.library_exercises = exercises.rows;
   runLog.pagination.library_exercises = exercises.pages;
 
+  progress("Exporting your workout program library.");
+  await kx.visit("/coach/builder/workouts/", {}, { mode: "programs", page: 1, pageSize: LIST_PAGE_SIZE, segment: "live", sort: "updated_desc" });
+  const programs = await kx.fetchAll(["workouts", "list", { mode: "programs" }]);
+  runLog.pagination.library_programs = programs.pages;
+  for (const program of programs.rows) {
+    const planId = program.programId || program.id;
+    progress(`Exporting program: ${program.name || "untitled"}.`);
+    const visit = await kx.visit("/coach/builder/workouts/plans/$planId", { planId });
+    const full = (await kx.find(["workouts", "plans", planId])).find((entry) => entry.key[entry.key.length - 1] === "full");
+    RAW.library_programs.push({ source_id: planId, list_row: program, detail: full?.data, other_queries: full ? undefined : visit.added });
+  }
+
+  progress("Exporting your meal plan library.");
+  await kx.visit("/coach/builder/nutrition/", {});
+  const nutritionPlans = await kx.fetchAll(["nutrition", "plans", "list"]);
+  runLog.pagination.library_meal_plans = nutritionPlans.pages;
+  for (const plan of nutritionPlans.rows) {
+    progress(`Exporting meal plan: ${plan.title || "untitled"}.`);
+    const visit = await kx.visit("/coach/builder/nutrition/plans/$planId", { planId: plan.id });
+    RAW.library_meal_plans.push({ source_id: plan.id, list_row: plan, queries: visit.added });
+  }
+
+  progress("Exporting your content library.");
+  for (const [area, route] of [["docs", "/coach/content/docs/"], ["library", "/coach/content/library"], ["education", "/coach/builder/education/"]]) {
+    const visit = await kx.visit(route, {});
+    RAW.content.push({ area, path: visit.path, queries: visit.added });
+  }
+
   progress("Exporting your recipes.");
   await kx.visit("/coach/builder/nutrition/recipes");
   RAW.recipes = await kx.find(["nutrition", "recipes"]);
@@ -1090,6 +1152,9 @@ const RAW_README = [
   "- `metrics.json`: body metrics and weight history",
   "- `habits.json`, `nutrition-logs.json`: week-by-week habit and food logs",
   "- `forms.json`, `library-exercises.json`, `recipes.json`: the coach's own forms, exercises and recipes",
+  "- `library-programs.json`, `library-meal-plans.json`: every program and meal plan in the coach's library, assigned or not",
+  "- `progress-photos.json`: progress photo list per client (links only; the photos themselves are not downloaded)",
+  "- `labs-and-cycle.json`, `content.json`: labs, cycle tracking, docs, content library and courses",
   "- `coach.json`: coach account and general settings",
   "",
   "Passwords, tokens and other secrets are not included. Photos and videos are not downloaded.",

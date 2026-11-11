@@ -54,6 +54,11 @@ Next to the V1 package the exporter writes one JSON file per area with the app's
 | `habits.json`, `nutrition-logs.json` | weekly queries (`weekStart` rewritten), from the current week back to the client's start date, capped by `--history-weeks` (default 104) |
 | `forms.json`, `library-exercises.json`, `recipes.json` | builder lists and form details |
 | `coach.json` | coach user and `settings.general` |
+| `library-programs.json` | `["workouts","list",{mode:"programs"}]` (paginated) + `["workouts","plans",id,null,null,"full"]` from `/coach/builder/workouts/plans/$planId` |
+| `library-meal-plans.json` | `["nutrition","plans","list",...]` (paginated) + every query loaded on `/coach/builder/nutrition/plans/$planId` |
+| `progress-photos.json` | `["clients","detail",id,"gallery","images","newest"]`, an infinite query of photo groups. Page rewriting does not apply to it yet, so only the first loaded page is kept (logged under `skipped`). Photos are not downloaded. |
+| `labs-and-cycle.json` | every query loaded on the client's `labs/` and `cycle` pages |
+| `content.json` | every query loaded on `/coach/content/docs/` (including legal documents), `/coach/content/library` and `/coach/builder/education/` |
 
 Payload overrides are generic: `fetchWith(pattern, { field: value })` rewrites every payload object that contains all given fields. The run log records under `skipped` when an override could not be applied, and what was kept instead.
 
